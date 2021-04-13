@@ -1,5 +1,5 @@
 /*
-Copyright 2020 Opstree Solutions.
+Copyright 2021 kubernetes-app Solutions.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,30 +21,33 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-logr/logr"
+	"github.com/kubernetes-app/redis-operator/k8sutils"
+
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
-	"redis-operator/k8sutils"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	redisv1beta1 "redis-operator/api/v1beta1"
+	redisv1alpha1 "github.com/kubernetes-app/redis-operator/api/v1alpha1"
 )
 
 // RedisReconciler reconciles a Redis object
 type RedisReconciler struct {
 	client.Client
-	Log    logr.Logger
+	*k8sutils.RedisClient
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=redis.redis.opstreelabs.in,resources=redis,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=redis.redis.opstreelabs.in,resources=redis/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=redis.redis.opstreelabs.in,resources=redis/finalizers,verbs=update
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=operators.cloud.tencent.com,resources=redis,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=operators.cloud.tencent.com,resources=redis/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=operators.cloud.tencent.com,resources=redis/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -56,12 +59,10 @@ type RedisReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	reqLogger := r.Log.WithValues("Request.Namespace", req.Namespace, "Request.Name", req.Name)
-	reqLogger.Info("Reconciling Opstree Redis controller")
-	instance := &redisv1beta1.Redis{}
+	klog.V(1).Infof("Reconciling Redis: %s", req.NamespacedName)
+	instance := &redisv1alpha1.Redis{}
 
-	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
-	if err != nil {
+	if err := r.Client.Get(context.TODO(), req.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -72,55 +73,55 @@ func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
-	found := &appsv1.StatefulSet{}
-	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
+	sts := &appsv1.StatefulSet{}
+	stsKey := req.NamespacedName
+	if err := r.Client.Get(context.TODO(), stsKey, sts); err != nil && errors.IsNotFound(err) {
 		if instance.Spec.GlobalConfig.Password != nil {
-			k8sutils.CreateRedisSecret(instance)
+			r.RedisClient.CreateRedisSecret(instance)
 		}
 		if instance.Spec.Mode == "cluster" {
-			k8sutils.CreateRedisMaster(instance)
-			k8sutils.CreateMasterService(instance)
-			k8sutils.CreateMasterHeadlessService(instance)
-			k8sutils.CreateRedisSlave(instance)
-			k8sutils.CreateSlaveService(instance)
-			k8sutils.CreateSlaveHeadlessService(instance)
-			redisMasterInfo, err := k8sutils.GenerateK8sClient().AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.ObjectMeta.Name+"-master", metav1.GetOptions{})
+			r.RedisClient.CreateRedisMaster(instance)
+			r.RedisClient.CreateMasterService(instance)
+			r.RedisClient.CreateMasterHeadlessService(instance)
+			r.RedisClient.CreateRedisSlave(instance)
+			r.RedisClient.CreateSlaveService(instance)
+			r.RedisClient.CreateSlaveHeadlessService(instance)
+			redisMasterInfo, err := r.RedisClient.AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.ObjectMeta.Name+"-master", metav1.GetOptions{})
 			if err != nil {
 				return ctrl.Result{}, err
 			}
-			redisSlaveInfo, err := k8sutils.GenerateK8sClient().AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.ObjectMeta.Name+"-slave", metav1.GetOptions{})
+			redisSlaveInfo, err := r.RedisClient.AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.ObjectMeta.Name+"-slave", metav1.GetOptions{})
 			if err != nil {
 				return ctrl.Result{}, err
 			}
 			if int(redisMasterInfo.Status.ReadyReplicas) != int(*instance.Spec.Size) && int(redisSlaveInfo.Status.ReadyReplicas) != int(*instance.Spec.Size) {
-				reqLogger.Info("Redis master and slave nodes are not ready yet", "Ready.Replicas", strconv.Itoa(int(redisMasterInfo.Status.ReadyReplicas)))
+				klog.Info("Redis master and slave nodes are not ready yet", "Ready.Replicas", strconv.Itoa(int(redisMasterInfo.Status.ReadyReplicas)))
 				return ctrl.Result{RequeueAfter: time.Second * 120}, nil
 			}
-			reqLogger.Info("Creating redis cluster by executing cluster creation command", "Ready.Replicas", strconv.Itoa(int(redisMasterInfo.Status.ReadyReplicas)))
-			if k8sutils.CheckRedisCluster(instance) != int(*instance.Spec.Size)*2 {
-				k8sutils.ExecuteRedisClusterCommand(instance)
-				k8sutils.ExecuteRedisReplicationCommand(instance)
+			klog.Info("Creating redis cluster by executing cluster creation command", "Ready.Replicas", strconv.Itoa(int(redisMasterInfo.Status.ReadyReplicas)))
+			if r.RedisClient.CheckRedisCluster(instance) != int(*instance.Spec.Size)*2 {
+				r.RedisClient.ExecuteRedisClusterCommand(instance)
+				r.RedisClient.ExecuteRedisReplicationCommand(instance)
 			} else {
-				reqLogger.Info("Redis master count is desired")
+				klog.Info("Redis master count is desired")
 				return ctrl.Result{RequeueAfter: time.Second * 120}, nil
 			}
 		} else if instance.Spec.Mode == "standalone" {
-			k8sutils.CreateRedisStandalone(instance)
-			k8sutils.CreateStandaloneService(instance)
-			k8sutils.CreateStandaloneHeadlessService(instance)
+			r.RedisClient.CreateRedisStandalone(instance)
+			r.RedisClient.CreateStandaloneService(instance)
+			r.RedisClient.CreateStandaloneHeadlessService(instance)
 		}
 	} else if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	reqLogger.Info("Will reconcile in again 10 seconds")
+	klog.Info("Will reconcile in again 10 seconds")
 	return ctrl.Result{RequeueAfter: time.Second * 10}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RedisReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&redisv1beta1.Redis{}).
+		For(&redisv1alpha1.Redis{}).
 		Complete(r)
 }

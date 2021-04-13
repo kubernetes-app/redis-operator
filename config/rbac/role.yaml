@@ -4,10 +4,46 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   creationTimestamp: null
-  name: manager-role-redis-operator
+  name: manager-role
 rules:
 - apiGroups:
-  - redis.redis.opstreelabs.in
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - operators.cloud.tencent.com
   resources:
   - redis
   verbs:
@@ -19,13 +55,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - redis.redis.opstreelabs.in
+  - operators.cloud.tencent.com
   resources:
   - redis/finalizers
   verbs:
   - update
 - apiGroups:
-  - redis.redis.opstreelabs.in
+  - operators.cloud.tencent.com
   resources:
   - redis/status
   verbs:

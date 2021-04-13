@@ -6,9 +6,9 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.4.1
   creationTimestamp: null
-  name: redis.redis.redis.opstreelabs.in
+  name: redis.operators.cloud.tencent.com
 spec:
-  group: redis.redis.opstreelabs.in
+  group: operators.cloud.tencent.com
   names:
     kind: Redis
     listKind: RedisList
@@ -16,7 +16,7 @@ spec:
     singular: redis
   scope: Namespaced
   versions:
-  - name: v1beta1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Redis is the Schema for the redis API
@@ -715,9 +715,6 @@ spec:
                     required:
                     - type
                     type: object
-                required:
-                - redisConfig
-                - service
                 type: object
               mode:
                 type: string
@@ -961,7 +958,6 @@ spec:
               size:
                 format: int32
                 type: integer
-                minimum: 3
               slave:
                 description: RedisSlave interface will have the redis slave configuration
                 properties:
@@ -1006,9 +1002,6 @@ spec:
                     required:
                     - type
                     type: object
-                required:
-                - redisConfig
-                - service
                 type: object
               storage:
                 description: Storage is the inteface to add pvc and pv support in
@@ -1947,9 +1940,6 @@ spec:
                         required:
                         - type
                         type: object
-                    required:
-                    - redisConfig
-                    - service
                     type: object
                   mode:
                     type: string
@@ -2241,9 +2231,6 @@ spec:
                         required:
                         - type
                         type: object
-                    required:
-                    - redisConfig
-                    - service
                     type: object
                   storage:
                     description: Storage is the inteface to add pvc and pv support
@@ -2482,19 +2469,6 @@ spec:
                 type: object
             type: object
         type: object
-    additionalPrinterColumns:
-    - jsonPath: .spec.size
-      description: Current master node count
-      name: Master
-      type: integer
-    - jsonPath: .spec.size
-      description: Current slave node count
-      name: Slave
-      type: integer
-    - jsonPath: .metadata.creationTimestamp
-      description: Last Deployment Time
-      name: Last Deployment Time
-      type: date
     served: true
     storage: true
     subresources:

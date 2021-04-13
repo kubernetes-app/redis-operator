@@ -108,7 +108,7 @@ To monitor redis performance we will be using prometheus. In any case, extra pro
 
 ```yaml
   annotations:
-    redis.opstreelabs.in: "true"
+    cloud.tencent.com: "true"
     prometheus.io/scrape: "true"
     prometheus.io/port: "9121"
 ```

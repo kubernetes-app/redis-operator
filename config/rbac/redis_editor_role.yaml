@@ -6,7 +6,7 @@ metadata:
   namespace: ot-operators
 rules:
 - apiGroups:
-  - redis.redis.opstreelabs.in
+  - operators.cloud.tencent.com
   resources:
   - redis
   verbs:
@@ -18,7 +18,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - redis.redis.opstreelabs.in
+  - operators.cloud.tencent.com
   resources:
   - redis/status
   verbs:

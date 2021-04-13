@@ -1,4 +1,4 @@
-apiVersion: redis.redis.opstreelabs.in/v1beta1
+apiVersion: operators.cloud.tencent.com/v1alpha1
 kind: Redis
 metadata:
   name: redis-sample

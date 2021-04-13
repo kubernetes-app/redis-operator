@@ -1,8 +1,8 @@
 ---
-apiVersion: redis.redis.opstreelabs.in/v1beta1
+apiVersion: operators.cloud.tencent.com/v1alpha1
 kind: Redis
 metadata:
-  name: redis
+  name: example-redis-cluster
 spec:
   mode: cluster
   size: 3
@@ -42,7 +42,7 @@ spec:
   storage:
     volumeClaimTemplate:
       spec:
-        storageClassName: buildpiper-storage
+        storageClassName: cbs
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:

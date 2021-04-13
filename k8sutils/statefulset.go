@@ -1,13 +1,30 @@
+/*
+Copyright 2021 kubernetes-app Solutions.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 package k8sutils
 
 import (
 	"context"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 
-	redisv1beta1 "redis-operator/api/v1beta1"
+	redisv1alpha1 "github.com/kubernetes-app/redis-operator/api/v1alpha1"
 )
 
 const (
@@ -23,7 +40,7 @@ type StatefulInterface struct {
 }
 
 // GenerateStateFulSetsDef generates the statefulsets definition
-func GenerateStateFulSetsDef(cr *redisv1beta1.Redis, labels map[string]string, role string, replicas *int32) *appsv1.StatefulSet {
+func GenerateStateFulSetsDef(cr *redisv1alpha1.Redis, labels map[string]string, role string, replicas *int32) *appsv1.StatefulSet {
 	statefulset := &appsv1.StatefulSet{
 		TypeMeta:   GenerateMetaInformation("StatefulSet", "apps/v1"),
 		ObjectMeta: GenerateObjectMetaInformation(cr.ObjectMeta.Name+"-"+role, cr.Namespace, labels, GenerateStatefulSetsAnots()),
@@ -50,7 +67,7 @@ func GenerateStateFulSetsDef(cr *redisv1beta1.Redis, labels map[string]string, r
 }
 
 // GenerateContainerDef generates container definition
-func GenerateContainerDef(cr *redisv1beta1.Redis, role string) corev1.Container {
+func GenerateContainerDef(cr *redisv1alpha1.Redis, role string) corev1.Container {
 	containerDefinition := corev1.Container{
 		Name:            cr.ObjectMeta.Name + "-" + role,
 		Image:           cr.Spec.GlobalConfig.Image,
@@ -140,7 +157,7 @@ func GenerateContainerDef(cr *redisv1beta1.Redis, role string) corev1.Container 
 }
 
 // FinalContainerDef will generate the final statefulset definition
-func FinalContainerDef(cr *redisv1beta1.Redis, role string) []corev1.Container {
+func FinalContainerDef(cr *redisv1alpha1.Redis, role string) []corev1.Container {
 	var containerDefinition []corev1.Container
 	var exporterDefinition corev1.Container
 	var exporterEnvDetails []corev1.EnvVar
@@ -198,14 +215,14 @@ func FinalContainerDef(cr *redisv1beta1.Redis, role string) []corev1.Container {
 }
 
 // CreateRedisMaster will create a Redis Master
-func CreateRedisMaster(cr *redisv1beta1.Redis) {
+func (rc *RedisClient) CreateRedisMaster(cr *redisv1alpha1.Redis) {
 
 	labels := map[string]string{
 		"app":  cr.ObjectMeta.Name + "-master",
 		"role": "master",
 	}
 	statefulDefinition := GenerateStateFulSetsDef(cr, labels, "master", cr.Spec.Size)
-	statefulObject, err := GenerateK8sClient().AppsV1().StatefulSets(cr.Namespace).Get(context.TODO(), cr.ObjectMeta.Name+"-master", metav1.GetOptions{})
+	statefulObject, err := rc.Clientset.AppsV1().StatefulSets(cr.Namespace).Get(context.TODO(), cr.ObjectMeta.Name+"-master", metav1.GetOptions{})
 
 	if cr.Spec.Storage != nil {
 		statefulDefinition.Spec.VolumeClaimTemplates = append(statefulDefinition.Spec.VolumeClaimTemplates, CreatePVCTemplate(cr, "master"))
@@ -216,17 +233,17 @@ func CreateRedisMaster(cr *redisv1beta1.Redis) {
 		Desired:  statefulDefinition,
 		Type:     "master",
 	}
-	CompareAndCreateStateful(cr, stateful, err)
+	rc.CompareAndCreateStateful(cr, stateful, err)
 }
 
 // CreateRedisSlave will create a Redis Slave
-func CreateRedisSlave(cr *redisv1beta1.Redis) {
+func (rc *RedisClient) CreateRedisSlave(cr *redisv1alpha1.Redis) {
 	labels := map[string]string{
 		"app":  cr.ObjectMeta.Name + "-slave",
 		"role": "slave",
 	}
 	statefulDefinition := GenerateStateFulSetsDef(cr, labels, "slave", cr.Spec.Size)
-	statefulObject, err := GenerateK8sClient().AppsV1().StatefulSets(cr.Namespace).Get(context.TODO(), cr.ObjectMeta.Name+"-slave", metav1.GetOptions{})
+	statefulObject, err := rc.Clientset.AppsV1().StatefulSets(cr.Namespace).Get(context.TODO(), cr.ObjectMeta.Name+"-slave", metav1.GetOptions{})
 
 	if cr.Spec.Storage != nil {
 		statefulDefinition.Spec.VolumeClaimTemplates = append(statefulDefinition.Spec.VolumeClaimTemplates, CreatePVCTemplate(cr, "slave"))
@@ -237,11 +254,11 @@ func CreateRedisSlave(cr *redisv1beta1.Redis) {
 		Desired:  statefulDefinition,
 		Type:     "slave",
 	}
-	CompareAndCreateStateful(cr, stateful, err)
+	rc.CompareAndCreateStateful(cr, stateful, err)
 }
 
 // CreateRedisStandalone will create a Redis Standalone server
-func CreateRedisStandalone(cr *redisv1beta1.Redis) {
+func (rc *RedisClient) CreateRedisStandalone(cr *redisv1alpha1.Redis) {
 	var standaloneReplica int32 = 1
 
 	labels := map[string]string{
@@ -249,7 +266,7 @@ func CreateRedisStandalone(cr *redisv1beta1.Redis) {
 		"role": "standalone",
 	}
 	statefulDefinition := GenerateStateFulSetsDef(cr, labels, "standalone", &standaloneReplica)
-	statefulObject, err := GenerateK8sClient().AppsV1().StatefulSets(cr.Namespace).Get(context.TODO(), cr.ObjectMeta.Name+"-standalone", metav1.GetOptions{})
+	statefulObject, err := rc.Clientset.AppsV1().StatefulSets(cr.Namespace).Get(context.TODO(), cr.ObjectMeta.Name+"-standalone", metav1.GetOptions{})
 
 	if cr.Spec.Storage != nil {
 		statefulDefinition.Spec.VolumeClaimTemplates = append(statefulDefinition.Spec.VolumeClaimTemplates, CreatePVCTemplate(cr, "standalone"))
@@ -260,38 +277,36 @@ func CreateRedisStandalone(cr *redisv1beta1.Redis) {
 		Desired:  statefulDefinition,
 		Type:     "standalone",
 	}
-	CompareAndCreateStateful(cr, stateful, err)
+	rc.CompareAndCreateStateful(cr, stateful, err)
 }
 
 // CompareAndCreateStateful will compare and create a statefulset pod
-func CompareAndCreateStateful(cr *redisv1beta1.Redis, clusterInfo StatefulInterface, err error) {
-	reqLogger := log.WithValues("Request.Namespace", cr.Namespace, "Request.Name", cr.ObjectMeta.Name)
+func (rc *RedisClient) CompareAndCreateStateful(cr *redisv1alpha1.Redis, clusterInfo StatefulInterface, err error) {
 
 	if err != nil {
-		reqLogger.Info("Creating redis setup", "Redis.Name", cr.ObjectMeta.Name+"-"+clusterInfo.Type, "Setup.Type", clusterInfo.Type)
-		_, err := GenerateK8sClient().AppsV1().StatefulSets(cr.Namespace).Create(context.TODO(), clusterInfo.Desired, metav1.CreateOptions{})
+		klog.Infof("Creating redis setup, Redis.Name: %s, Setup.Type: %s", cr.ObjectMeta.Name+"-"+clusterInfo.Type, clusterInfo.Type)
+		_, err := rc.Clientset.AppsV1().StatefulSets(cr.Namespace).Create(context.TODO(), clusterInfo.Desired, metav1.CreateOptions{})
 		if err != nil {
-			reqLogger.Error(err, "Failed in creating statefulset for redis")
+			klog.Errorf("Failed in creating statefulset for redis: %v", err)
 		}
 	} else if clusterInfo.Existing != clusterInfo.Desired {
-		reqLogger.Info("Reconciling redis setup", "Redis.Name", cr.ObjectMeta.Name+"-"+clusterInfo.Type, "Setup.Type", clusterInfo.Type)
-		_, err := GenerateK8sClient().AppsV1().StatefulSets(cr.Namespace).Update(context.TODO(), clusterInfo.Desired, metav1.UpdateOptions{})
+		klog.Infof("Reconciling redis setup, Redis.Name: %s, Setup.Type: %s", cr.ObjectMeta.Name+"-"+clusterInfo.Type, clusterInfo.Type)
+		_, err := rc.Clientset.AppsV1().StatefulSets(cr.Namespace).Update(context.TODO(), clusterInfo.Desired, metav1.UpdateOptions{})
 		if err != nil {
-			reqLogger.Error(err, "Failed in updating statefulset for redis")
+			klog.Errorf("Failed in updating statefulset for redis: %v", err)
 		}
 	} else {
-		reqLogger.Info("Redis setup is in sync", "Redis.Name", cr.ObjectMeta.Name+"-"+clusterInfo.Type, "Setup.Type", clusterInfo.Type)
+		klog.Infof("Redis setup is in sync, Redis.Name: %s, Setup.Type: %s", cr.ObjectMeta.Name+"-"+clusterInfo.Type, clusterInfo.Type)
 	}
 }
 
 // CreatePVCTemplate will create the persistent volume claim template
-func CreatePVCTemplate(cr *redisv1beta1.Redis, role string) corev1.PersistentVolumeClaim {
-	reqLogger := log.WithValues("Request.Namespace", cr.Namespace, "Request.Name", cr.ObjectMeta.Name)
+func CreatePVCTemplate(cr *redisv1alpha1.Redis, role string) corev1.PersistentVolumeClaim {
 	storageSpec := cr.Spec.Storage
 	var pvcTemplate corev1.PersistentVolumeClaim
 
 	if storageSpec == nil {
-		reqLogger.Info("No storage is defined for redis", "Redis.Name", cr.ObjectMeta.Name)
+		klog.Infof("No storage is defined for redis", "Redis.Name", cr.ObjectMeta.Name)
 	} else {
 		pvcTemplate = storageSpec.VolumeClaimTemplate
 		pvcTemplate.CreationTimestamp = metav1.Time{}

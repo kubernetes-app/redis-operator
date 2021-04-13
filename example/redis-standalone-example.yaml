@@ -1,8 +1,8 @@
 ---
-apiVersion: redis.redis.opstreelabs.in/v1beta1
+apiVersion: operators.cloud.tencent.com/v1alpha1
 kind: Redis
 metadata:
-  name: opstree-redis
+  name: example-redis
 spec:
   mode: standalone
   global:
@@ -33,7 +33,7 @@ spec:
   storage:
     volumeClaimTemplate:
       spec:
-        storageClassName: csi-cephfs-sc
+        storageClassName: cbs
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:

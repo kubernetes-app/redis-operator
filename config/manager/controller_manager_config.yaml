@@ -8,4 +8,4 @@ webhook:
   port: 9443
 leaderElection:
   leaderElect: true
-  resourceName: 6cab913b.redis.opstreelabs.in
+  resourceName: 6cab913b.cloud.tencent.com
