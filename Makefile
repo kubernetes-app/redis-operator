@@ -29,7 +29,7 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 BUNDLE_IMG ?= blackholex/redis-operator-bundle:$(VERSION)
 
 # Image URL to use all building/pushing image targets
-IMG ?= blackholex/redis-operator:$(VERSION)
+IMG ?= blackholex/redis-operator:latest
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
 
@@ -74,6 +74,16 @@ vet: ## Run go vet against code.
 
 tidy: ## Run go mod tidy -v
 	go mod tidy -v
+
+goimports_fmt: ## Run goimports
+	goimports -w -local github.com/kubernetes-app api/
+	goimports -w -local github.com/kubernetes-app controllers/
+	goimports -w -local github.com/kubernetes-app main.go
+
+FINDFILES=find . \( -path ./.git -o -path ./.github -o -path ./testbin \) -prune -o -type f
+XARGS = xargs -0 ${XARGS_FLAGS}
+lint-go: ## Run lint go
+	@${FINDFILES} -name '*.go' \( ! \( -name '*.gen.go' -o -name '*.pb.go' \) \) -print0 | ${XARGS} common/scripts/lint_go.sh
 
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
 test: manifests generate fmt vet ## Run tests.

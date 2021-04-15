@@ -672,7 +672,8 @@ spec:
                 - image
                 type: object
               master:
-                description: RedisMaster interface will have the redis master configuration
+                description: RedisRoleConfig interface will have the different redis
+                  role configuration
                 properties:
                   redisConfig:
                     additionalProperties:
@@ -947,19 +948,58 @@ spec:
                         type: string
                     type: object
                 type: object
-              service:
-                description: Service is the struct for service definition
-                properties:
-                  type:
-                    type: string
-                required:
-                - type
-                type: object
               size:
                 format: int32
                 type: integer
               slave:
-                description: RedisSlave interface will have the redis slave configuration
+                description: RedisRoleConfig interface will have the different redis
+                  role configuration
+                properties:
+                  redisConfig:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  resources:
+                    description: Resources describes requests and limits for the cluster
+                      resouces.
+                    properties:
+                      limits:
+                        description: ResourceDescription describes CPU and memory
+                          resources defined for a cluster.
+                        properties:
+                          cpu:
+                            type: string
+                          memory:
+                            type: string
+                        required:
+                        - cpu
+                        - memory
+                        type: object
+                      requests:
+                        description: ResourceDescription describes CPU and memory
+                          resources defined for a cluster.
+                        properties:
+                          cpu:
+                            type: string
+                          memory:
+                            type: string
+                        required:
+                        - cpu
+                        - memory
+                        type: object
+                    type: object
+                  service:
+                    description: Service is the struct for service definition
+                    properties:
+                      type:
+                        type: string
+                    required:
+                    - type
+                    type: object
+                type: object
+              standalone:
+                description: RedisRoleConfig interface will have the different redis
+                  role configuration
                 properties:
                   redisConfig:
                     additionalProperties:
@@ -1226,7 +1266,6 @@ spec:
             - global
             - mode
             - redisConfig
-            - service
             type: object
           status:
             description: RedisStatus defines the observed state of Redis
@@ -1896,8 +1935,8 @@ spec:
                     - image
                     type: object
                   master:
-                    description: RedisMaster interface will have the redis master
-                      configuration
+                    description: RedisRoleConfig interface will have the different
+                      redis role configuration
                     properties:
                       redisConfig:
                         additionalProperties:
@@ -2176,19 +2215,58 @@ spec:
                             type: string
                         type: object
                     type: object
-                  service:
-                    description: Service is the struct for service definition
-                    properties:
-                      type:
-                        type: string
-                    required:
-                    - type
-                    type: object
                   size:
                     format: int32
                     type: integer
                   slave:
-                    description: RedisSlave interface will have the redis slave configuration
+                    description: RedisRoleConfig interface will have the different
+                      redis role configuration
+                    properties:
+                      redisConfig:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      resources:
+                        description: Resources describes requests and limits for the
+                          cluster resouces.
+                        properties:
+                          limits:
+                            description: ResourceDescription describes CPU and memory
+                              resources defined for a cluster.
+                            properties:
+                              cpu:
+                                type: string
+                              memory:
+                                type: string
+                            required:
+                            - cpu
+                            - memory
+                            type: object
+                          requests:
+                            description: ResourceDescription describes CPU and memory
+                              resources defined for a cluster.
+                            properties:
+                              cpu:
+                                type: string
+                              memory:
+                                type: string
+                            required:
+                            - cpu
+                            - memory
+                            type: object
+                        type: object
+                      service:
+                        description: Service is the struct for service definition
+                        properties:
+                          type:
+                            type: string
+                        required:
+                        - type
+                        type: object
+                    type: object
+                  standalone:
+                    description: RedisRoleConfig interface will have the different
+                      redis role configuration
                     properties:
                       redisConfig:
                         additionalProperties:
@@ -2465,7 +2543,6 @@ spec:
                 - global
                 - mode
                 - redisConfig
-                - service
                 type: object
             type: object
         type: object

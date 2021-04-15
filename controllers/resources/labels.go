@@ -13,11 +13,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package k8sutils
+package resources
 
 import (
-	redisv1alpha1 "github.com/kubernetes-app/redis-operator/api/v1alpha1"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -42,18 +40,6 @@ func GenerateObjectMetaInformation(name string, namespace string, labels map[str
 // AddOwnerRefToObject adds the owner references to object
 func AddOwnerRefToObject(obj metav1.Object, ownerRef metav1.OwnerReference) {
 	obj.SetOwnerReferences(append(obj.GetOwnerReferences(), ownerRef))
-}
-
-// AsOwner generates and returns object refernece
-func AsOwner(cr *redisv1alpha1.Redis) metav1.OwnerReference {
-	trueVar := true
-	return metav1.OwnerReference{
-		APIVersion: cr.APIVersion,
-		Kind:       cr.Kind,
-		Name:       cr.Name,
-		UID:        cr.UID,
-		Controller: &trueVar,
-	}
 }
 
 // GenerateStatefulSetsAnots generates and returns statefulsets annotations

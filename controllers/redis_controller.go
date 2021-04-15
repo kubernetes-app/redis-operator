@@ -18,33 +18,31 @@ package controllers
 
 import (
 	"context"
-	"strconv"
 	"time"
 
-	"github.com/kubernetes-app/redis-operator/k8sutils"
-
-	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	redisv1alpha1 "github.com/kubernetes-app/redis-operator/api/v1alpha1"
+	res "github.com/kubernetes-app/redis-operator/controllers/resources"
 )
 
 // RedisReconciler reconciles a Redis object
 type RedisReconciler struct {
 	client.Client
-	*k8sutils.RedisClient
+	*res.RedisClient
 	Scheme *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list
+// +kubebuilder:rbac:groups=core,resources=pods/exec,verbs=create
+// +kubebuilder:rbac:groups=core,resources=secrets;services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=operators.cloud.tencent.com,resources=redis,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=operators.cloud.tencent.com,resources=redis/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=operators.cloud.tencent.com,resources=redis/finalizers,verbs=update
@@ -69,54 +67,100 @@ func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
-	if err := controllerutil.SetControllerReference(instance, instance, r.Scheme); err != nil {
-		return ctrl.Result{}, err
+	if instance.Spec.GlobalConfig.Password != nil {
+		if err := r.RedisClient.CreateOrUpdateRedisSecret(instance); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+	if instance.Spec.Mode == "cluster" {
+		if err := r.ReconcileRedisClusterNode(instance); err != nil {
+			return ctrl.Result{}, err
+		}
+	} else if instance.Spec.Mode == "standalone" {
+		if err := r.ReconcileRedisStandalone(instance); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
-	sts := &appsv1.StatefulSet{}
-	stsKey := req.NamespacedName
-	if err := r.Client.Get(context.TODO(), stsKey, sts); err != nil && errors.IsNotFound(err) {
-		if instance.Spec.GlobalConfig.Password != nil {
-			r.RedisClient.CreateRedisSecret(instance)
-		}
-		if instance.Spec.Mode == "cluster" {
-			r.RedisClient.CreateRedisMaster(instance)
-			r.RedisClient.CreateMasterService(instance)
-			r.RedisClient.CreateMasterHeadlessService(instance)
-			r.RedisClient.CreateRedisSlave(instance)
-			r.RedisClient.CreateSlaveService(instance)
-			r.RedisClient.CreateSlaveHeadlessService(instance)
-			redisMasterInfo, err := r.RedisClient.AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.ObjectMeta.Name+"-master", metav1.GetOptions{})
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			redisSlaveInfo, err := r.RedisClient.AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.ObjectMeta.Name+"-slave", metav1.GetOptions{})
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			if int(redisMasterInfo.Status.ReadyReplicas) != int(*instance.Spec.Size) && int(redisSlaveInfo.Status.ReadyReplicas) != int(*instance.Spec.Size) {
-				klog.Info("Redis master and slave nodes are not ready yet", "Ready.Replicas", strconv.Itoa(int(redisMasterInfo.Status.ReadyReplicas)))
-				return ctrl.Result{RequeueAfter: time.Second * 120}, nil
-			}
-			klog.Info("Creating redis cluster by executing cluster creation command", "Ready.Replicas", strconv.Itoa(int(redisMasterInfo.Status.ReadyReplicas)))
-			if r.RedisClient.CheckRedisCluster(instance) != int(*instance.Spec.Size)*2 {
-				r.RedisClient.ExecuteRedisClusterCommand(instance)
-				r.RedisClient.ExecuteRedisReplicationCommand(instance)
-			} else {
-				klog.Info("Redis master count is desired")
-				return ctrl.Result{RequeueAfter: time.Second * 120}, nil
-			}
-		} else if instance.Spec.Mode == "standalone" {
-			r.RedisClient.CreateRedisStandalone(instance)
-			r.RedisClient.CreateStandaloneService(instance)
-			r.RedisClient.CreateStandaloneHeadlessService(instance)
-		}
-	} else if err != nil {
-		return ctrl.Result{}, err
+	klog.Infof("Finished reconciling Redis: %s", req.NamespacedName)
+	return ctrl.Result{}, nil
+}
+
+func (r *RedisReconciler) ReconcileRedisClusterNode(instance *redisv1alpha1.Redis) error {
+	klog.Info("Creating redis cluster nodes")
+	if err := r.RedisClient.CreateOrUpdateRedisMaster(instance); err != nil {
+		return err
+	}
+	if err := r.RedisClient.CreateOrUpdateMasterService(instance); err != nil {
+		return err
+	}
+	if err := r.RedisClient.CreateOrUpdateMasterHeadlessService(instance); err != nil {
+		return err
+	}
+	if err := r.RedisClient.CreateOrUpdateRedisSlave(instance); err != nil {
+		return err
+	}
+	if err := r.RedisClient.CreateOrUpdateSlaveService(instance); err != nil {
+		return err
+	}
+	if err := r.RedisClient.CreateOrUpdateSlaveHeadlessService(instance); err != nil {
+		return err
 	}
 
-	klog.Info("Will reconcile in again 10 seconds")
-	return ctrl.Result{RequeueAfter: time.Second * 10}, nil
+	klog.Info("Waiting for all redis cluster nodes ready")
+	if err := r.WaitRedisClusterNodeReady(instance); err != nil {
+		return err
+	}
+
+	klog.Info("Creating redis cluster by executing cluster creation command")
+	if r.RedisClient.CheckRedisCluster(instance) != int(*instance.Spec.Size)*2 {
+		if err := r.RedisClient.ExecuteRedisClusterCommand(instance); err != nil {
+			return err
+		}
+		if err := r.RedisClient.ExecuteRedisReplicationCommand(instance); err != nil {
+			return err
+		}
+	}
+	klog.Info("Redis master count is desired")
+	return nil
+}
+
+func (r *RedisReconciler) ReconcileRedisStandalone(instance *redisv1alpha1.Redis) error {
+	if err := r.RedisClient.CreateOrUpdateRedisStandalone(instance); err != nil {
+		return err
+	}
+	if err := r.RedisClient.CreateOrUpdateStandaloneService(instance); err != nil {
+		return err
+	}
+	if err := r.RedisClient.CreateOrUpdateStandaloneHeadlessService(instance); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Waiting for redis cluster node ready
+func (r *RedisReconciler) WaitRedisClusterNodeReady(instance *redisv1alpha1.Redis) error {
+	if err := wait.PollImmediate(time.Second*30, time.Minute*5, func() (bool, error) {
+		redisMasterInfo, err := r.RedisClient.AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.ObjectMeta.Name+"-master", metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("Cound not fetch redis master statefulset: %v", err)
+			return false, err
+		}
+		redisSlaveInfo, err := r.RedisClient.AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.ObjectMeta.Name+"-slave", metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("Cound not fetch redis slave statefulset: %v", err)
+			return false, err
+		}
+		if int(redisMasterInfo.Status.ReadyReplicas) != int(*instance.Spec.Size) && int(redisSlaveInfo.Status.ReadyReplicas) != int(*instance.Spec.Size) {
+			klog.Infof("Redis master and slave nodes are not ready yet, Master.Ready.Replicas: %d, Slave.Ready.Replicas: %d", redisMasterInfo.Status.ReadyReplicas, redisSlaveInfo.Status.ReadyReplicas)
+			return false, nil
+		}
+		klog.Infof("Redis master and slave nodes are ready, Master.Ready.Replicas: %d, Slave.Ready.Replicas: %d", redisMasterInfo.Status.ReadyReplicas, redisSlaveInfo.Status.ReadyReplicas)
+		return true, nil
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

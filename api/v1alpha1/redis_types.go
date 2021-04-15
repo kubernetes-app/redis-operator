@@ -29,9 +29,9 @@ type RedisSpec struct {
 	Mode              string                     `json:"mode"`
 	Size              *int32                     `json:"size,omitempty"`
 	GlobalConfig      GlobalConfig               `json:"global"`
-	Service           Service                    `json:"service"`
-	Master            RedisMaster                `json:"master,omitempty"`
-	Slave             RedisSlave                 `json:"slave,omitempty"`
+	Master            RedisRoleConfig            `json:"master,omitempty"`
+	Slave             RedisRoleConfig            `json:"slave,omitempty"`
+	Standalone        RedisRoleConfig            `json:"standalone,omitempty"`
 	RedisExporter     *RedisExporter             `json:"redisExporter,omitempty"`
 	RedisConfig       map[string]string          `json:"redisConfig"`
 	Resources         *Resources                 `json:"resources,omitempty"`
@@ -52,8 +52,8 @@ type Storage struct {
 	VolumeClaimTemplate corev1.PersistentVolumeClaim `json:"volumeClaimTemplate,omitempty"`
 }
 
-// RedisMaster interface will have the redis master configuration
-type RedisMaster struct {
+// RedisRoleConfig interface will have the different redis role configuration
+type RedisRoleConfig struct {
 	Resources   Resources         `json:"resources,omitempty"`
 	RedisConfig map[string]string `json:"redisConfig,omitempty"`
 	Service     Service           `json:"service,omitempty"`
@@ -73,13 +73,6 @@ type GlobalConfig struct {
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 	Password        *string           `json:"password,omitempty"`
 	Resources       *Resources        `json:"resources,omitempty"`
-}
-
-// RedisSlave interface will have the redis slave configuration
-type RedisSlave struct {
-	Resources   Resources         `json:"resources,omitempty"`
-	RedisConfig map[string]string `json:"redisConfig,omitempty"`
-	Service     Service           `json:"service,omitempty"`
 }
 
 // ResourceDescription describes CPU and memory resources defined for a cluster.

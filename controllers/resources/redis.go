@@ -13,7 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package k8sutils
+package resources
 
 import (
 	"bufio"
@@ -24,11 +24,10 @@ import (
 
 	redisv1alpha1 "github.com/kubernetes-app/redis-operator/api/v1alpha1"
 
-	"github.com/go-redis/redis"
+	redis "github.com/go-redis/redis/v8"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/klog/v2"
 )
@@ -49,7 +48,7 @@ func (rc *RedisClient) GetRedisServerIP(redisInfo RedisDetails) string {
 }
 
 // ExecuteRedisClusterCommand will execute redis cluster creation command
-func (rc *RedisClient) ExecuteRedisClusterCommand(cr *redisv1alpha1.Redis) {
+func (rc *RedisClient) ExecuteRedisClusterCommand(cr *redisv1alpha1.Redis) error {
 	replicas := cr.Spec.Size
 	cmd := []string{
 		"redis-cli",
@@ -68,12 +67,15 @@ func (rc *RedisClient) ExecuteRedisClusterCommand(cr *redisv1alpha1.Redis) {
 		cmd = append(cmd, "-a")
 		cmd = append(cmd, *cr.Spec.GlobalConfig.Password)
 	}
-	klog.Infof("Redis cluster creation command is %s", cmd)
-	rc.ExecuteCommand(cr, cmd)
+	klog.Infof("Redis cluster creation command: %s", cmd)
+	if err := rc.ExecuteCommand(cr, cmd); err != nil {
+		return err
+	}
+	return nil
 }
 
-// CreateRedisReplicationCommand will create redis replication creation command
-func (rc *RedisClient) CreateRedisReplicationCommand(cr *redisv1alpha1.Redis, nodeNumber string) []string {
+// GenerateRedisReplicationCommand will create redis replication creation command
+func (rc *RedisClient) GenerateRedisReplicationCommand(cr *redisv1alpha1.Redis, nodeNumber string) []string {
 	cmd := []string{
 		"redis-cli",
 		"--cluster",
@@ -95,21 +97,26 @@ func (rc *RedisClient) CreateRedisReplicationCommand(cr *redisv1alpha1.Redis, no
 		cmd = append(cmd, "-a")
 		cmd = append(cmd, *cr.Spec.GlobalConfig.Password)
 	}
-	klog.Infof("Redis replication creation command is %s", cmd)
+	klog.Infof("Redis replication creation command: %s", cmd)
 	return cmd
 }
 
 // ExecuteRedisReplicationCommand will execute the replication command
-func (rc *RedisClient) ExecuteRedisReplicationCommand(cr *redisv1alpha1.Redis) {
+func (rc *RedisClient) ExecuteRedisReplicationCommand(cr *redisv1alpha1.Redis) error {
 	replicas := cr.Spec.Size
 	for podCount := 0; podCount <= int(*replicas)-1; podCount++ {
-		cmd := rc.CreateRedisReplicationCommand(cr, strconv.Itoa(podCount))
-		rc.ExecuteCommand(cr, cmd)
+		cmd := rc.GenerateRedisReplicationCommand(cr, strconv.Itoa(podCount))
+		if err := rc.ExecuteCommand(cr, cmd); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // CheckRedisCluster will check the redis cluster have sufficient nodes or not
 func (rc *RedisClient) CheckRedisCluster(cr *redisv1alpha1.Redis) int {
+	klog.Info("Checking redis cluster nodes")
+	ctx := context.Background()
 	var client *redis.Client
 
 	redisInfo := RedisDetails{
@@ -130,8 +137,8 @@ func (rc *RedisClient) CheckRedisCluster(cr *redisv1alpha1.Redis) int {
 			DB:       0,
 		})
 	}
-	cmd := redis.NewStringCmd("cluster", "nodes")
-	err := client.Process(cmd)
+	cmd := client.ClusterNodes(ctx)
+	err := client.Process(ctx, cmd)
 	if err != nil {
 		klog.Errorf("Redis command failed with this error: %v", err)
 	}
@@ -140,43 +147,43 @@ func (rc *RedisClient) CheckRedisCluster(cr *redisv1alpha1.Redis) int {
 	if err != nil {
 		klog.Errorf("Redis command failed with this error: %v", err)
 	}
-	klog.Infof("Redis cluster nodes are listed, Output: %s", output)
+	klog.Infof("Redis cluster nodes are listed, Output: \n%s", output)
 	scanner := bufio.NewScanner(strings.NewReader(output))
 
 	count := 0
 	for scanner.Scan() {
 		count++
 	}
-	klog.Infof("Total number of redis nodes are %d", strconv.Itoa(count))
+	klog.Infof("Total number of redis nodes: %d", count)
 	return count
 }
 
 // ExecuteCommand will execute the commands in pod
-func (rc *RedisClient) ExecuteCommand(cr *redisv1alpha1.Redis, cmd []string) {
+func (rc *RedisClient) ExecuteCommand(cr *redisv1alpha1.Redis, cmd []string) error {
 	var (
 		execOut bytes.Buffer
 		execErr bytes.Buffer
 	)
 
-	config, _ := rest.InClusterConfig()
-
 	pod, err := rc.Clientset.CoreV1().Pods(cr.Namespace).Get(context.TODO(), cr.ObjectMeta.Name+"-master-0", metav1.GetOptions{})
 
 	if err != nil {
 		klog.Error("Could not get pod info: %v", err)
+		return err
 	}
 
-	targetContainer := -1
+	targetContainerIndex := -1
 	for i, tr := range pod.Spec.Containers {
-		klog.Infof("Pod Counted successfully, Count: %d, Container Name: %s", i, tr.Name)
 		if tr.Name == cr.ObjectMeta.Name+"-master" {
-			targetContainer = i
+			klog.Infof("Pod Counted successfully, Count: %d, Container Name: %s", i, tr.Name)
+			targetContainerIndex = i
 			break
 		}
 	}
 
-	if targetContainer < 0 {
+	if targetContainerIndex < 0 {
 		klog.Errorf("Could not find pod to execute: %v", err)
+		return err
 	}
 
 	req := rc.Clientset.CoreV1().RESTClient().Post().
@@ -185,25 +192,26 @@ func (rc *RedisClient) ExecuteCommand(cr *redisv1alpha1.Redis, cmd []string) {
 		Namespace(cr.Namespace).
 		SubResource("exec")
 	req.VersionedParams(&corev1.PodExecOptions{
-		Container: pod.Spec.Containers[targetContainer].Name,
+		Container: pod.Spec.Containers[targetContainerIndex].Name,
 		Command:   cmd,
 		Stdout:    true,
 		Stderr:    true,
 	}, scheme.ParameterCodec)
 
-	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	exec, err := remotecommand.NewSPDYExecutor(rc.Config, "POST", req.URL())
 	if err != nil {
-		klog.Errorf("Failed to init executor", err)
+		klog.Errorf("Failed to init executor: %v", err)
+		return err
 	}
 
-	err = exec.Stream(remotecommand.StreamOptions{
+	if err = exec.Stream(remotecommand.StreamOptions{
 		Stdout: &execOut,
 		Stderr: &execErr,
 		Tty:    false,
-	})
-
-	if err != nil {
-		klog.Errorf("Could not execute command: %v", err)
+	}); err != nil {
+		klog.Errorf("Failed to execute command, Command: %s, \nerr: \n%v, \nStdout: \n%s, \nStderr: \n%s", cmd, err, execOut.String(), execErr.String())
+		return err
 	}
-	klog.Infof("Successfully executed the command, Command: %s, Output: %s", cmd, execOut.String())
+	klog.Infof("Successfully executed the command, Command: %s, \nStdout: \n%s", cmd, execOut.String())
+	return nil
 }
