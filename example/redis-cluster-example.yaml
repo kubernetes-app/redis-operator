@@ -5,7 +5,7 @@ metadata:
   name: example-redis-cluster
 spec:
   mode: cluster
-  size: 3
+  size: 4
   global:
     image: quay.io/opstree/redis:v6.2
     imagePullPolicy: IfNotPresent

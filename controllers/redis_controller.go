@@ -112,13 +112,36 @@ func (r *RedisReconciler) ReconcileRedisClusterNode(instance *redisv1alpha1.Redi
 		return err
 	}
 
-	klog.Info("Creating redis cluster by executing cluster creation command")
-	if r.RedisClient.CheckRedisCluster(instance) != int(*instance.Spec.Size)*2 {
+	numOfRedisNodes := r.RedisClient.GetRedisClusterNodes(instance).CountByFunc(res.AllNodes)
+	// If number of redis nodes is 1, create redis cluster
+	// If 1 < numOfRedisNodes < size*2, add left nodes(size*2 - numOfRedisNodes) to redis cluster
+	if numOfRedisNodes == 1 {
+		klog.Info("Creating redis cluster")
 		if err := r.RedisClient.ExecuteRedisClusterCommand(instance); err != nil {
 			return err
 		}
-		if err := r.RedisClient.ExecuteRedisReplicationCommand(instance); err != nil {
-			return err
+		for podCount := 0; podCount < int(*instance.Spec.Size); podCount++ {
+			if err := r.RedisClient.ExecuteRedisReplicationCommand(instance, podCount); err != nil {
+				return err
+			}
+		}
+	} else if numOfRedisNodes < int(*instance.Spec.Size)*2 {
+		klog.Info("Adding node to redis cluster")
+		startIndex := numOfRedisNodes / 2
+		for podCount := startIndex; podCount < int(*instance.Spec.Size); podCount++ {
+			if err := r.RedisClient.ExecuteAddRedisMasterCommand(instance, podCount); err != nil {
+				return err
+			}
+			klog.Info("Waiting for master-%d node join cluster", podCount)
+			if err := r.WaitRedisMasterJoin(instance); err != nil {
+				return err
+			}
+			if err := r.RedisClient.ExecuteSlotReshardCommand(instance, podCount); err != nil {
+				return err
+			}
+			if err := r.RedisClient.ExecuteRedisReplicationCommand(instance, podCount); err != nil {
+				return err
+			}
 		}
 	}
 	klog.Info("Redis master count is desired")
@@ -156,6 +179,22 @@ func (r *RedisReconciler) WaitRedisClusterNodeReady(instance *redisv1alpha1.Redi
 			return false, nil
 		}
 		klog.Infof("Redis master and slave nodes are ready, Master.Ready.Replicas: %d, Slave.Ready.Replicas: %d", redisMasterInfo.Status.ReadyReplicas, redisSlaveInfo.Status.ReadyReplicas)
+		return true, nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Waiting for redis cluster node ready
+func (r *RedisReconciler) WaitRedisMasterJoin(instance *redisv1alpha1.Redis) error {
+	if err := wait.PollImmediate(time.Second*10, time.Minute*2, func() (bool, error) {
+		filterNodes := r.RedisClient.GetRedisClusterNodes(instance).FilterByFunc(res.IsMasterWithNoSlot)
+		if len(filterNodes) == 0 {
+			klog.Info("Waiting master node join cluster ...")
+			return false, nil
+		}
+		klog.Info("Master node joined cluster")
 		return true, nil
 	}); err != nil {
 		return err
