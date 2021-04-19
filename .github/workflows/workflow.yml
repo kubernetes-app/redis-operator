@@ -4,6 +4,16 @@ name: CI Pipeline
 on: [push, pull_request]
 
 jobs:
+  golangci:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          version: v1.38.0
+          args: --timeout 5m0s
   build:
     name: build
     runs-on: ubuntu-latest
@@ -15,10 +25,7 @@ jobs:
       uses: actions/setup-go@v2
       with:
         go-version: '1.15.0'
-    
-    - name: Building code
-      run: |
-        make build
+
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v1
 
@@ -41,13 +48,22 @@ jobs:
         push: ${{ github.event_name != 'pull_request' }}
         tags: blackholex/redis-operator:latest
 
-  golangci:
-    name: lint
+  test:
+    name: test
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v2
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v2
-        with:
-          version: v1.38.0
-          args: --timeout 5m0s
+    - uses: actions/checkout@v2
+
+    - name: Setup Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: '1.15.0'
+    
+    - name: Unit testing
+      run: |
+        make test
+    - name: Testing deploy
+      run: |
+        make kind-cluster
+        make deploy

@@ -85,11 +85,34 @@ XARGS = xargs -0 ${XARGS_FLAGS}
 lint-go: ## Run lint go
 	@${FINDFILES} -name '*.go' \( ! \( -name '*.gen.go' -o -name '*.pb.go' \) \) -print0 | ${XARGS} common/scripts/lint_go.sh
 
+##@ Test
+
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
 test: manifests generate fmt vet ## Run tests.
 	mkdir -p ${ENVTEST_ASSETS_DIR}
 	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.7.2/hack/setup-envtest.sh
 	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./... -coverprofile cover.out
+
+KIND ?= $(shell which kind)
+kind: ## Install kind
+ifeq (, $(KIND))
+	@{ \
+	set -e ;\
+	ZEN_TMP_DIR=$$(mktemp -d) ;\
+	cd $$ZEN_TMP_DIR ;\
+	go mod init tmp ;\
+	GO111MODULE=on go get sigs.k8s.io/kind@v0.10.0 ;\
+	rm -rf $$ZEN_TMP_DIR ;\
+	}
+KIND=$(GOBIN)/kind
+endif
+
+KIND_CLUSTER_NAME ?= "redis"
+kind-cluster: kind ## Create kind cluster
+	@${KIND} get clusters | grep $(KIND_CLUSTER_NAME)  >/dev/null 2>&1 && \
+	echo "KIND Cluster already exists" && exit 0 || \
+	echo "Creating KIND Cluster" && \
+	${KIND} create cluster --name ${KIND_CLUSTER_NAME} --config=./common/config/kind-config.yaml
 
 ##@ Build
 
