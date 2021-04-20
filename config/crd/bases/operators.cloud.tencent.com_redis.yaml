@@ -672,8 +672,8 @@ spec:
                 - image
                 type: object
               master:
-                description: RedisRoleConfig interface will have the different redis
-                  role configuration
+                description: RedisConfig interface will have the different redis role
+                  configuration
                 properties:
                   redisConfig:
                     additionalProperties:
@@ -725,10 +725,6 @@ spec:
                 type: object
               priorityClassName:
                 type: string
-              redisConfig:
-                additionalProperties:
-                  type: string
-                type: object
               redisExporter:
                 description: RedisExporter interface will have the information for
                   redis exporter related stuff
@@ -772,35 +768,6 @@ spec:
                     type: object
                 required:
                 - image
-                type: object
-              resources:
-                description: Resources describes requests and limits for the cluster
-                  resouces.
-                properties:
-                  limits:
-                    description: ResourceDescription describes CPU and memory resources
-                      defined for a cluster.
-                    properties:
-                      cpu:
-                        type: string
-                      memory:
-                        type: string
-                    required:
-                    - cpu
-                    - memory
-                    type: object
-                  requests:
-                    description: ResourceDescription describes CPU and memory resources
-                      defined for a cluster.
-                    properties:
-                      cpu:
-                        type: string
-                      memory:
-                        type: string
-                    required:
-                    - cpu
-                    - memory
-                    type: object
                 type: object
               securityContext:
                 description: PodSecurityContext holds pod-level security attributes
@@ -952,8 +919,8 @@ spec:
                 format: int32
                 type: integer
               slave:
-                description: RedisRoleConfig interface will have the different redis
-                  role configuration
+                description: RedisConfig interface will have the different redis role
+                  configuration
                 properties:
                   redisConfig:
                     additionalProperties:
@@ -998,8 +965,8 @@ spec:
                     type: object
                 type: object
               standalone:
-                description: RedisRoleConfig interface will have the different redis
-                  role configuration
+                description: RedisConfig interface will have the different redis role
+                  configuration
                 properties:
                   redisConfig:
                     additionalProperties:
@@ -1265,7 +1232,6 @@ spec:
             required:
             - global
             - mode
-            - redisConfig
             type: object
           status:
             description: RedisStatus defines the observed state of Redis
@@ -1935,8 +1901,8 @@ spec:
                     - image
                     type: object
                   master:
-                    description: RedisRoleConfig interface will have the different
-                      redis role configuration
+                    description: RedisConfig interface will have the different redis
+                      role configuration
                     properties:
                       redisConfig:
                         additionalProperties:
@@ -1988,10 +1954,6 @@ spec:
                     type: object
                   priorityClassName:
                     type: string
-                  redisConfig:
-                    additionalProperties:
-                      type: string
-                    type: object
                   redisExporter:
                     description: RedisExporter interface will have the information
                       for redis exporter related stuff
@@ -2035,35 +1997,6 @@ spec:
                         type: object
                     required:
                     - image
-                    type: object
-                  resources:
-                    description: Resources describes requests and limits for the cluster
-                      resouces.
-                    properties:
-                      limits:
-                        description: ResourceDescription describes CPU and memory
-                          resources defined for a cluster.
-                        properties:
-                          cpu:
-                            type: string
-                          memory:
-                            type: string
-                        required:
-                        - cpu
-                        - memory
-                        type: object
-                      requests:
-                        description: ResourceDescription describes CPU and memory
-                          resources defined for a cluster.
-                        properties:
-                          cpu:
-                            type: string
-                          memory:
-                            type: string
-                        required:
-                        - cpu
-                        - memory
-                        type: object
                     type: object
                   securityContext:
                     description: PodSecurityContext holds pod-level security attributes
@@ -2219,8 +2152,8 @@ spec:
                     format: int32
                     type: integer
                   slave:
-                    description: RedisRoleConfig interface will have the different
-                      redis role configuration
+                    description: RedisConfig interface will have the different redis
+                      role configuration
                     properties:
                       redisConfig:
                         additionalProperties:
@@ -2265,8 +2198,8 @@ spec:
                         type: object
                     type: object
                   standalone:
-                    description: RedisRoleConfig interface will have the different
-                      redis role configuration
+                    description: RedisConfig interface will have the different redis
+                      role configuration
                     properties:
                       redisConfig:
                         additionalProperties:
@@ -2542,7 +2475,6 @@ spec:
                 required:
                 - global
                 - mode
-                - redisConfig
                 type: object
             type: object
         type: object

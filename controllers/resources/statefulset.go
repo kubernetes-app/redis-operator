@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -77,6 +78,16 @@ func (rc *RedisClient) CreateOrUpdateRedisServer(cr *redisv1alpha1.Redis, role s
 	}
 	klog.Infof("Create or Update redis %s server successful, statefulset %s", role, or)
 	return nil
+}
+
+func (rc *RedisClient) FetchStatefulSet(cr *redisv1alpha1.Redis, role string) (*appsv1.StatefulSet, error) {
+	redisSts := &appsv1.StatefulSet{}
+	redisStsKey := types.NamespacedName{Name: cr.ObjectMeta.Name + "-" + role, Namespace: cr.Namespace}
+	if err := rc.Get(context.Background(), redisStsKey, redisSts); err != nil {
+		klog.Errorf("Could not fetch redis %s statefulset: %v", role, err)
+		return nil, err
+	}
+	return redisSts, nil
 }
 
 // GenerateStateFulSetsDef generates the statefulsets definition

@@ -18,9 +18,11 @@ package controllers
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -28,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	redisv1alpha1 "github.com/kubernetes-app/redis-operator/api/v1alpha1"
 	res "github.com/kubernetes-app/redis-operator/controllers/resources"
@@ -67,7 +70,20 @@ func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 		return ctrl.Result{}, err
 	}
-
+	cm, err := r.GetConfigMap(instance)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			if err := r.CreateOrUpdateConfigMap(instance); err != nil {
+				return ctrl.Result{}, err
+			}
+		} else {
+			return ctrl.Result{}, err
+		}
+	}
+	sizeInCm, _ := strconv.Atoi(cm.Data["size"])
+	if sizeInCm > int(*instance.Spec.Size) {
+		klog.Info("delete redis node")
+	}
 	if instance.Spec.GlobalConfig.Password != nil {
 		if err := r.RedisClient.CreateOrUpdateRedisSecret(instance); err != nil {
 			return ctrl.Result{}, err
@@ -151,6 +167,8 @@ func (r *RedisReconciler) ReconcileRedisClusterNode(instance *redisv1alpha1.Redi
 				return err
 			}
 		}
+	} else if numOfRedisNodes > int(*instance.Spec.Size)*2 {
+
 	}
 	klog.Info("Redis cluster is ready")
 	return nil
@@ -196,6 +214,54 @@ func (r *RedisReconciler) WaitRedisClusterNodeReady(instance *redisv1alpha1.Redi
 		return err
 	}
 	return nil
+}
+
+func (r *RedisReconciler) CreateOrUpdateConfigMap(instance *redisv1alpha1.Redis) error {
+	cm := &corev1.ConfigMap{}
+	cmName := "redis-cluster-info"
+	cmNamespace := instance.Namespace
+	cmKey := types.NamespacedName{Name: cmName, Namespace: cmNamespace}
+
+	if err := r.Get(context.Background(), cmKey, cm); err != nil {
+		if errors.IsNotFound(err) {
+			cm.SetName(cmName)
+			cm.SetNamespace(cmNamespace)
+			cm.Data = map[string]string{"size": string(*instance.Spec.Size)}
+			// Set NamespaceScope instance as the owner of the ConfigMap.
+			if err := controllerutil.SetOwnerReference(instance, cm, r.Scheme); err != nil {
+				klog.Errorf("Failed to set owner reference for ConfigMap %s: %v", cmKey.String(), err)
+				return err
+			}
+
+			if err := r.Create(context.Background(), cm); err != nil {
+				klog.Errorf("Failed to create ConfigMap %s: %v", cmKey.String(), err)
+				return err
+			}
+			klog.Infof("Created ConfigMap %s", cmKey.String())
+			return nil
+		}
+		return err
+	}
+	// If cluster size changed, update configmap
+	if cm.Data["size"] != string(*instance.Spec.Size) {
+		cm.Data["size"] = string(*instance.Spec.Size)
+
+		if err := r.Update(context.Background(), cm); err != nil {
+			klog.Errorf("Failed to update ConfigMap %s: %v", cmKey.String(), err)
+			return err
+		}
+		klog.Infof("Updated ConfigMap %s", cmKey.String())
+	}
+	return nil
+}
+
+func (r *RedisReconciler) GetConfigMap(instance *redisv1alpha1.Redis) (*corev1.ConfigMap, error) {
+	cm := &corev1.ConfigMap{}
+	cmName := "redis-cluster-info"
+	if err := r.Get(context.Background(), types.NamespacedName{Name: cmName, Namespace: instance.Namespace}, cm); err != nil {
+		return nil, err
+	}
+	return cm, nil
 }
 
 // Waiting for redis cluster node ready

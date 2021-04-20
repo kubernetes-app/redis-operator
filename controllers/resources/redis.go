@@ -267,10 +267,10 @@ func (rc *RedisClient) ExecuteCommand(cr *redisv1alpha1.Redis, cmd []string) err
 		Stderr: &execErr,
 		Tty:    false,
 	}); err != nil {
-		klog.Errorf("Failed to execute command, Command: %s, \nerr: \n%v, \nStdout: \n%s, \nStderr: \n%s", cmd, err, execOut.String(), execErr.String())
+		klog.Errorf("Failed to execute command, Command: %s, err: \n%v, \nStdout: \n%s, \nStderr: \n%s", cmd, err, execOut.String(), execErr.String())
 		return err
 	}
-	klog.Infof("Successfully executed the command, Command: %s, \nStdout: \n%s", cmd, execOut.String())
+	klog.V(1).Infof("Successfully executed the command, Command: %s, Stdout: \n%s", cmd, execOut.String())
 	return nil
 }
 

@@ -29,12 +29,10 @@ type RedisSpec struct {
 	Mode              string                     `json:"mode"`
 	Size              *int32                     `json:"size,omitempty"`
 	GlobalConfig      GlobalConfig               `json:"global"`
-	Master            RedisRoleConfig            `json:"master,omitempty"`
-	Slave             RedisRoleConfig            `json:"slave,omitempty"`
-	Standalone        RedisRoleConfig            `json:"standalone,omitempty"`
+	Master            RedisConfig                `json:"master,omitempty"`
+	Slave             RedisConfig                `json:"slave,omitempty"`
+	Standalone        RedisConfig                `json:"standalone,omitempty"`
 	RedisExporter     *RedisExporter             `json:"redisExporter,omitempty"`
-	RedisConfig       map[string]string          `json:"redisConfig"`
-	Resources         *Resources                 `json:"resources,omitempty"`
 	Storage           *Storage                   `json:"storage,omitempty"`
 	NodeSelector      map[string]string          `json:"nodeSelector,omitempty"`
 	SecurityContext   *corev1.PodSecurityContext `json:"securityContext,omitempty"`
@@ -52,11 +50,11 @@ type Storage struct {
 	VolumeClaimTemplate corev1.PersistentVolumeClaim `json:"volumeClaimTemplate,omitempty"`
 }
 
-// RedisRoleConfig interface will have the different redis role configuration
-type RedisRoleConfig struct {
-	Resources   Resources         `json:"resources,omitempty"`
-	RedisConfig map[string]string `json:"redisConfig,omitempty"`
-	Service     Service           `json:"service,omitempty"`
+// RedisConfig interface will have the different redis role configuration
+type RedisConfig struct {
+	Resources Resources         `json:"resources,omitempty"`
+	Config    map[string]string `json:"redisConfig,omitempty"`
+	Service   Service           `json:"service,omitempty"`
 }
 
 // RedisExporter interface will have the information for redis exporter related stuff
