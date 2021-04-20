@@ -28,8 +28,9 @@ jobs:
 
     - name: Testing deploy
       run: |
-        make docker-image
+        make docker-build
         make kind-cluster
+        make kind-load-img
         make deploy
 
     - name: Set up QEMU

@@ -176,6 +176,7 @@ func (rc *RedisClient) GenerateSlotReshardCommand(cr *redisv1alpha1.Redis, nodeN
 	cmd = append(cmd, nodes.GetClusterToNodeID())
 	cmd = append(cmd, "--cluster-slots")
 	cmd = append(cmd, "1024")
+	cmd = append(cmd, "--cluster-yes")
 
 	if cr.Spec.GlobalConfig.Password != nil {
 		cmd = append(cmd, "-a")

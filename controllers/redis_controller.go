@@ -184,12 +184,13 @@ func (r *RedisReconciler) WaitRedisClusterNodeReady(instance *redisv1alpha1.Redi
 			klog.Errorf("Could not fetch redis slave statefulset: %v", err)
 			return false, client.IgnoreNotFound(err)
 		}
-
-		if int(redisMasterSts.Status.ReadyReplicas) != int(*instance.Spec.Size) && int(redisSlaveSts.Status.ReadyReplicas) != int(*instance.Spec.Size) {
-			klog.Infof("Redis master and slave nodes are not ready yet, Master.Ready.Replicas: %d, Slave.Ready.Replicas: %d", redisMasterSts.Status.ReadyReplicas, redisSlaveSts.Status.ReadyReplicas)
+		clusterSize := int32(*instance.Spec.Size)
+		masterReady, slaveReady := redisMasterSts.Status.ReadyReplicas, redisSlaveSts.Status.ReadyReplicas
+		if masterReady != clusterSize && slaveReady != clusterSize {
+			klog.Infof("Redis master and slave nodes are not ready yet, Master: [%d/%d], Slave: [%d/%d]", masterReady, clusterSize, slaveReady, clusterSize)
 			return false, nil
 		}
-		klog.Infof("Redis master and slave nodes are ready, Master.Ready.Replicas: %d, Slave.Ready.Replicas: %d", redisMasterSts.Status.ReadyReplicas, redisSlaveSts.Status.ReadyReplicas)
+		klog.Infof("Redis master and slave nodes are ready, Master: [%d/%d], Slave: [%d/%d]", masterReady, clusterSize, slaveReady, clusterSize)
 		return true, nil
 	}); err != nil {
 		return err
