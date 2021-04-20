@@ -3,14 +3,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/OT-CONTAINER-KIT/redis-operator">
-    <img src="https://github.com/OT-CONTAINER-KIT/redis-operator/workflows/CI%20Pipeline/badge.svg" alt="Github CI">
+  <a href="https://github.com/kubernetes-app/redis-operator">
+    <img src="https://github.com/kubernetes-app/redis-operator/workflows/CI%20Pipeline/badge.svg" alt="Github CI">
   </a>
-  <a href="https://goreportcard.com/report/github.com/OT-CONTAINER-KIT/redis-operator">
-    <img src="https://goreportcard.com/badge/github.com/OT-CONTAINER-KIT/redis-operator" alt="GoReportCard">
+  <a href="https://goreportcard.com/report/github.com/kubernetes-app/redis-operator">
+    <img src="https://goreportcard.com/badge/github.com/kubernetes-app/redis-operator" alt="GoReportCard">
   </a>
   <a href="http://golang.org">
-    <img src="https://img.shields.io/github/go-mod/go-version/OT-CONTAINER-KIT/redis-operator" alt="GitHub go.mod Go version (subdirectory of monorepo)">
+    <img src="https://img.shields.io/github/go-mod/go-version/kubernetes-app/redis-operator" alt="GitHub go.mod Go version (subdirectory of monorepo)">
   </a>
   <a href="http://golang.org">
     <img src="https://img.shields.io/badge/Made%20with-Go-1f425f.svg" alt="made-with-Go">
@@ -18,14 +18,12 @@
   <a href="https://quay.io/repository/opstree/redis-operator">
     <img src="https://img.shields.io/badge/container-ready-green" alt="Docker">
   </a>
-  <a href="https://github.com/OT-CONTAINER-KIT/redis-operator/master/LICENSE">
+  <a href="https://github.com/kubernetes-app/redis-operator/master/LICENSE">
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License">
   </a>
 </p>
 
 A Golang based redis operator that will make/oversee Redis standalone/cluster mode setup on top of the Kubernetes. It can create a redis cluster setup with best practices on Cloud as well as the Bare metal environment. Also, it provides an in-built monitoring capability using redis-exporter.
-
-For documentation, please refer to https://docs.opstreelabs.in/redis-operator/
 
 ## Architecture
 
@@ -49,6 +47,7 @@ Here the features which are supported by this operator:-
 - Node selector and affinity
 - Priority class to manage setup priority
 - SecurityContext to manipulate kernel parameters
+- Redis cluster loadbalencer (add/remove redis node)
 
 ### Getting Started
 

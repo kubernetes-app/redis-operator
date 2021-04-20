@@ -28,6 +28,7 @@ spec:
         - /manager
         args:
         - --enable-leader-election
+        - -v=2
         image: controller:latest
         imagePullPolicy: Always
         name: manager

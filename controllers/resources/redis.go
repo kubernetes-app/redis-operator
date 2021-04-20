@@ -16,7 +16,6 @@ limitations under the License.
 package resources
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -27,25 +26,30 @@ import (
 
 	redis "github.com/go-redis/redis/v8"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/klog/v2"
 )
 
-// RedisDetails will hold the information for Redis Pod
-type RedisDetails struct {
-	PodName   string
-	Namespace string
-}
+const (
+	// DefaultRedisPort define the default Redis Port
+	DefaultRedisPort = "6379"
+	// RedisMasterRole redis role master
+	RedisMasterRole = "master"
+	// RedisSlaveRole redis role slave
+	RedisSlaveRole = "slave"
+)
 
 // GetRedisServerIP will return the IP of redis service
-func (rc *RedisClient) GetRedisServerIP(redisInfo RedisDetails) string {
-	redisIP, _ := rc.Clientset.CoreV1().Pods(redisInfo.Namespace).
-		Get(context.TODO(), redisInfo.PodName, metav1.GetOptions{})
-
-	klog.Infof("Successfully got the ip for redis, ip: %s", redisIP.Status.PodIP)
-	return redisIP.Status.PodIP
+func (rc *RedisClient) GetRedisServerIP(podKey types.NamespacedName) (string, error) {
+	pod := &corev1.Pod{}
+	if err := rc.Get(context.Background(), podKey, pod); err != nil {
+		klog.Errorf("Could not get pod info: %v", err)
+		return "", err
+	}
+	klog.V(1).Infof("Successfully got the pod ip for redis, IP: %s", pod.Status.PodIP)
+	return pod.Status.PodIP, nil
 }
 
 // ExecuteRedisClusterCommand will execute redis cluster creation command
@@ -57,11 +61,14 @@ func (rc *RedisClient) ExecuteRedisClusterCommand(cr *redisv1alpha1.Redis) error
 		"create",
 	}
 	for podCount := 0; podCount <= int(*replicas)-1; podCount++ {
-		pod := RedisDetails{
-			PodName:   cr.ObjectMeta.Name + "-master-" + strconv.Itoa(podCount),
+		masterIp, err := rc.GetRedisServerIP(types.NamespacedName{
+			Name:      cr.ObjectMeta.Name + "-master-" + strconv.Itoa(podCount),
 			Namespace: cr.Namespace,
+		})
+		if err != nil {
+			return err
 		}
-		cmd = append(cmd, rc.GetRedisServerIP(pod)+":6379")
+		cmd = append(cmd, masterIp+":"+DefaultRedisPort)
 	}
 	cmd = append(cmd, "--cluster-yes")
 	if cr.Spec.GlobalConfig.Password != nil {
@@ -77,7 +84,10 @@ func (rc *RedisClient) ExecuteRedisClusterCommand(cr *redisv1alpha1.Redis) error
 
 // ExecuteAddRedisMasterCommand will execute add redis master node command
 func (rc *RedisClient) ExecuteAddRedisMasterCommand(cr *redisv1alpha1.Redis, podCount int) error {
-	cmd := rc.GenerateAddRedisMasterNodeCommand(cr, strconv.Itoa(podCount))
+	cmd, err := rc.GenerateAddRedisMasterNodeCommand(cr, strconv.Itoa(podCount))
+	if err != nil {
+		return err
+	}
 	if err := rc.ExecuteCommand(cr, cmd); err != nil {
 		return err
 	}
@@ -86,7 +96,10 @@ func (rc *RedisClient) ExecuteAddRedisMasterCommand(cr *redisv1alpha1.Redis, pod
 
 // ExecuteSlotReshardCommand will execute the reshard command
 func (rc *RedisClient) ExecuteSlotReshardCommand(cr *redisv1alpha1.Redis, podCount int) error {
-	cmd := rc.GenerateSlotReshardCommand(cr, strconv.Itoa(podCount))
+	cmd, err := rc.GenerateSlotReshardCommand(cr, strconv.Itoa(podCount))
+	if err != nil {
+		return nil
+	}
 	if err := rc.ExecuteCommand(cr, cmd); err != nil {
 		return err
 	}
@@ -95,7 +108,10 @@ func (rc *RedisClient) ExecuteSlotReshardCommand(cr *redisv1alpha1.Redis, podCou
 
 // ExecuteRedisReplicationCommand will execute the replication command
 func (rc *RedisClient) ExecuteRedisReplicationCommand(cr *redisv1alpha1.Redis, podCount int) error {
-	cmd := rc.GenerateRedisReplicationCommand(cr, strconv.Itoa(podCount))
+	cmd, err := rc.GenerateRedisReplicationCommand(cr, strconv.Itoa(podCount))
+	if err != nil {
+		return err
+	}
 	if err := rc.ExecuteCommand(cr, cmd); err != nil {
 		return err
 	}
@@ -103,22 +119,28 @@ func (rc *RedisClient) ExecuteRedisReplicationCommand(cr *redisv1alpha1.Redis, p
 }
 
 // GenerateRedisReplicationCommand will create redis replication creation command
-func (rc *RedisClient) GenerateRedisReplicationCommand(cr *redisv1alpha1.Redis, nodeNumber string) []string {
+func (rc *RedisClient) GenerateRedisReplicationCommand(cr *redisv1alpha1.Redis, nodeNumber string) ([]string, error) {
 	cmd := []string{
 		"redis-cli",
 		"--cluster",
 		"add-node",
 	}
-	masterPod := RedisDetails{
-		PodName:   cr.ObjectMeta.Name + "-master-" + nodeNumber,
+	masterIp, err := rc.GetRedisServerIP(types.NamespacedName{
+		Name:      cr.ObjectMeta.Name + "-master-" + nodeNumber,
 		Namespace: cr.Namespace,
+	})
+	if err != nil {
+		return nil, err
 	}
-	slavePod := RedisDetails{
-		PodName:   cr.ObjectMeta.Name + "-slave-" + nodeNumber,
+	slaveIp, err := rc.GetRedisServerIP(types.NamespacedName{
+		Name:      cr.ObjectMeta.Name + "-slave-" + nodeNumber,
 		Namespace: cr.Namespace,
+	})
+	if err != nil {
+		return nil, err
 	}
-	cmd = append(cmd, rc.GetRedisServerIP(slavePod)+":6379")
-	cmd = append(cmd, rc.GetRedisServerIP(masterPod)+":6379")
+	cmd = append(cmd, slaveIp+":"+DefaultRedisPort)
+	cmd = append(cmd, masterIp+":"+DefaultRedisPort)
 	cmd = append(cmd, "--cluster-slave")
 
 	if cr.Spec.GlobalConfig.Password != nil {
@@ -126,28 +148,32 @@ func (rc *RedisClient) GenerateRedisReplicationCommand(cr *redisv1alpha1.Redis, 
 		cmd = append(cmd, *cr.Spec.GlobalConfig.Password)
 	}
 	klog.Infof("Redis replication creation command: %s", cmd)
-	return cmd
+	return cmd, nil
 }
 
 // GenerateSlotReshardCommand will create redis replication creation command
-func (rc *RedisClient) GenerateSlotReshardCommand(cr *redisv1alpha1.Redis, nodeNumber string) []string {
+func (rc *RedisClient) GenerateSlotReshardCommand(cr *redisv1alpha1.Redis, nodeNumber string) ([]string, error) {
 	cmd := []string{
 		"redis-cli",
 		"--cluster",
 		"reshard",
 	}
-	// redis-cli --cluster reshard 192.168.8.124:7979 \
-	// --cluster-from 2846540d8284538096f111a8ce7cf01c50199237,e0a9c3e60eeb951a154d003b9b28bbdc0be67d5b,692dec0ccd6bdf68ef5d97f145ecfa6d6bca6132 \
-	// --cluster-to 46f0b68b3f605b3369d3843a89a2b4a164ed21e8 --cluster-slots 1024
-	masterPod := RedisDetails{
-		PodName:   cr.ObjectMeta.Name + "-master-" + nodeNumber,
-		Namespace: cr.Namespace,
+
+	masterIp, err := rc.GetRedisServerIP(types.NamespacedName{
+		Name:      cr.ObjectMeta.Name + "-master-" + nodeNumber,
+		Namespace: cr.Namespace})
+	if err != nil {
+		return nil, err
 	}
-	cmd = append(cmd, rc.GetRedisServerIP(masterPod)+":6379")
-	cmd = append(cmd, "--cluster-from ")
-	cmd = append(cmd, rc.GetRedisClusterNodes(cr).GetClusterFromNodeIds())
+	nodes, err := rc.GetRedisClusterNodes(cr)
+	if err != nil {
+		return nil, err
+	}
+	cmd = append(cmd, masterIp+":"+DefaultRedisPort)
+	cmd = append(cmd, "--cluster-from")
+	cmd = append(cmd, nodes.GetClusterFromNodeIds())
 	cmd = append(cmd, "--cluster-to")
-	cmd = append(cmd, rc.GetRedisClusterNodes(cr).GetClusterToNodeID())
+	cmd = append(cmd, nodes.GetClusterToNodeID())
 	cmd = append(cmd, "--cluster-slots")
 	cmd = append(cmd, "1024")
 
@@ -156,79 +182,39 @@ func (rc *RedisClient) GenerateSlotReshardCommand(cr *redisv1alpha1.Redis, nodeN
 		cmd = append(cmd, *cr.Spec.GlobalConfig.Password)
 	}
 	klog.Infof("Redis replication creation command: %s", cmd)
-	return cmd
+	return cmd, nil
 }
 
 // GenerateAddRedisMasterNodeCommand will generate a command for add redis master node
-func (rc *RedisClient) GenerateAddRedisMasterNodeCommand(cr *redisv1alpha1.Redis, nodeNumber string) []string {
+func (rc *RedisClient) GenerateAddRedisMasterNodeCommand(cr *redisv1alpha1.Redis, nodeNumber string) ([]string, error) {
 	cmd := []string{
 		"redis-cli",
 		"--cluster",
 		"add-node",
 	}
-	master0Pod := RedisDetails{
-		PodName:   cr.ObjectMeta.Name + "-master-0",
+	masterIp, err := rc.GetRedisServerIP(types.NamespacedName{
+		Name:      cr.ObjectMeta.Name + "-master-0",
 		Namespace: cr.Namespace,
+	})
+	if err != nil {
+		return nil, err
 	}
-	masterNPod := RedisDetails{
-		PodName:   cr.ObjectMeta.Name + "-master-" + nodeNumber,
+	slaveIp, err := rc.GetRedisServerIP(types.NamespacedName{
+		Name:      cr.ObjectMeta.Name + "-master-" + nodeNumber,
 		Namespace: cr.Namespace,
+	})
+	if err != nil {
+		return nil, err
 	}
-	// MasterNPod is a new redis node, it will added to redis cluster
-	cmd = append(cmd, rc.GetRedisServerIP(masterNPod)+":6379")
-	cmd = append(cmd, rc.GetRedisServerIP(master0Pod)+":6379")
+	cmd = append(cmd, slaveIp+":"+DefaultRedisPort)
+	cmd = append(cmd, masterIp+":"+DefaultRedisPort)
 
 	if cr.Spec.GlobalConfig.Password != nil {
 		cmd = append(cmd, "-a")
 		cmd = append(cmd, *cr.Spec.GlobalConfig.Password)
 	}
 	klog.Infof("Add redis master node command: %s", cmd)
-	return cmd
-}
-
-// FetchRedisClusterNodesNum will check the redis cluster have sufficient nodes or not
-func (rc *RedisClient) FetchRedisClusterNodesNum(cr *redisv1alpha1.Redis) int {
-	klog.Info("Checking redis cluster nodes")
-	ctx := context.Background()
-	var client *redis.Client
-
-	redisInfo := RedisDetails{
-		PodName:   cr.ObjectMeta.Name + "-master-0",
-		Namespace: cr.Namespace,
-	}
-
-	if cr.Spec.GlobalConfig.Password != nil {
-		client = redis.NewClient(&redis.Options{
-			Addr:     rc.GetRedisServerIP(redisInfo) + ":6379",
-			Password: *cr.Spec.GlobalConfig.Password,
-			DB:       0,
-		})
-	} else {
-		client = redis.NewClient(&redis.Options{
-			Addr:     rc.GetRedisServerIP(redisInfo) + ":6379",
-			Password: "",
-			DB:       0,
-		})
-	}
-	cmd := client.ClusterNodes(ctx)
-	err := client.Process(ctx, cmd)
-	if err != nil {
-		klog.Errorf("Redis command failed with this error: %v", err)
-	}
-
-	output, err := cmd.Result()
-	if err != nil {
-		klog.Errorf("Redis command failed with this error: %v", err)
-	}
-	klog.Infof("Redis cluster nodes are listed, Output: \n%s", output)
-	scanner := bufio.NewScanner(strings.NewReader(output))
-
-	count := 0
-	for scanner.Scan() {
-		count++
-	}
-	klog.Infof("Total number of redis nodes: %d", count)
-	return count
+	return cmd, nil
 }
 
 // ExecuteCommand will execute the commands in pod
@@ -237,28 +223,26 @@ func (rc *RedisClient) ExecuteCommand(cr *redisv1alpha1.Redis, cmd []string) err
 		execOut bytes.Buffer
 		execErr bytes.Buffer
 	)
-
-	pod, err := rc.Clientset.CoreV1().Pods(cr.Namespace).Get(context.TODO(), cr.ObjectMeta.Name+"-master-0", metav1.GetOptions{})
-
-	if err != nil {
-		klog.Error("Could not get pod info: %v", err)
+	pod := &corev1.Pod{}
+	podKey := types.NamespacedName{Name: cr.ObjectMeta.Name + "-master-0", Namespace: cr.Namespace}
+	if err := rc.Get(context.Background(), podKey, pod); err != nil {
+		klog.Errorf("Could not get pod info: %v", err)
 		return err
 	}
 
 	targetContainerIndex := -1
 	for i, tr := range pod.Spec.Containers {
 		if tr.Name == cr.ObjectMeta.Name+"-master" {
-			klog.Infof("Pod Counted successfully, Count: %d, Container Name: %s", i, tr.Name)
+			klog.V(1).Infof("Pod Counted successfully, Count: %d, Container Name: %s", i, tr.Name)
 			targetContainerIndex = i
 			break
 		}
 	}
 
 	if targetContainerIndex < 0 {
-		klog.Errorf("Could not find pod to execute: %v", err)
-		return err
+		klog.Error("Could not find pod container to execute")
+		return fmt.Errorf("Could not find pod container to execute")
 	}
-
 	req := rc.Clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(cr.ObjectMeta.Name + "-master-0").
@@ -289,31 +273,32 @@ func (rc *RedisClient) ExecuteCommand(cr *redisv1alpha1.Redis, cmd []string) err
 	return nil
 }
 
-func (rc *RedisClient) GetRedisClusterNodes(cr *redisv1alpha1.Redis) Nodes {
+func (rc *RedisClient) GetRedisClusterNodes(cr *redisv1alpha1.Redis) (Nodes, error) {
 	ctx := context.Background()
 	var client *redis.Client
-
-	redisInfo := RedisDetails{
-		PodName:   cr.ObjectMeta.Name + "-master-0",
+	masterIp, err := rc.GetRedisServerIP(types.NamespacedName{
+		Name:      cr.ObjectMeta.Name + "-master-0",
 		Namespace: cr.Namespace,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	if cr.Spec.GlobalConfig.Password != nil {
 		client = redis.NewClient(&redis.Options{
-			Addr:     rc.GetRedisServerIP(redisInfo) + ":6379",
+			Addr:     masterIp + ":" + DefaultRedisPort,
 			Password: *cr.Spec.GlobalConfig.Password,
 			DB:       0,
 		})
 	} else {
 		client = redis.NewClient(&redis.Options{
-			Addr:     rc.GetRedisServerIP(redisInfo) + ":6379",
+			Addr:     masterIp + ":" + DefaultRedisPort,
 			Password: "",
 			DB:       0,
 		})
 	}
 	cmd := client.ClusterNodes(ctx)
-	err := client.Process(ctx, cmd)
-	if err != nil {
+	if err := client.Process(ctx, cmd); err != nil {
 		klog.Errorf("Redis command failed with this error: %v", err)
 	}
 
@@ -321,7 +306,8 @@ func (rc *RedisClient) GetRedisClusterNodes(cr *redisv1alpha1.Redis) Nodes {
 	if err != nil {
 		klog.Errorf("Redis command failed with this error: %v", err)
 	}
-	return DecodeNodeInfos(&output)
+	klog.V(2).Infof("Redis cluster nodes: \n%s", output)
+	return DecodeNodeInfos(&output), nil
 }
 
 // DecodeNodeInfos decode from the cmd output the Redis nodes info.
@@ -329,15 +315,12 @@ func DecodeNodeInfos(input *string) Nodes {
 	nodes := Nodes{}
 	lines := strings.Split(*input, "\n")
 	for _, line := range lines {
-		klog.Infof("line: %s", line)
 		values := strings.Split(line, " ")
 		if len(values) < 8 {
 			// last line is always empty
-			klog.Infof("not enough values in line split, ignoring line: %s", line)
 			continue
 		} else {
 			node := NewDefaultNode()
-
 			node.ID = values[0]
 			//remove trailing port for cluster internal protocol
 			ipPort := strings.Split(values[1], "@")
@@ -345,7 +328,7 @@ func DecodeNodeInfos(input *string) Nodes {
 				node.IP = ip
 				node.Port = port
 			} else {
-				klog.Errorf("error while decoding node info for node '%s', cannot split ip:port ('%s'): %v", node.ID, values[1], err)
+				klog.Errorf("error while decoding node info for node %s, cannot split ip:port (%s): %v", node.ID, values[1], err)
 			}
 			node.SetRole(values[2])
 			node.SetReferentMaster(values[3])
@@ -355,7 +338,6 @@ func DecodeNodeInfos(input *string) Nodes {
 			nodes = append(nodes, node)
 		}
 	}
-
 	return nodes
 }
 

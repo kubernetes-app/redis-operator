@@ -5,15 +5,6 @@ import (
 	"strings"
 )
 
-const (
-	// DefaultRedisPort define the default Redis Port
-	DefaultRedisPort = "6379"
-	// RedisMasterRole redis role master
-	RedisMasterRole = "master"
-	// RedisSlaveRole redis role slave
-	RedisSlaveRole = "slave"
-)
-
 // Node Represent a Redis Node
 type Node struct {
 	ID             string
@@ -109,6 +100,7 @@ func (n Nodes) FilterByFunc(fn func(*Node) bool) Nodes {
 	return newSlice
 }
 
+// GetClusterFromNodeIds function for get source master redis node ID to reshard slot
 func (n Nodes) GetClusterFromNodeIds() string {
 	filterNodes := n.FilterByFunc(IsMasterWithSlot)
 	var ids []string
@@ -118,19 +110,23 @@ func (n Nodes) GetClusterFromNodeIds() string {
 	return strings.Join(ids, ",")
 }
 
+// GetClusterToNodeID function for get target redis node ID to reshard slot
 func (n Nodes) GetClusterToNodeID() string {
 	filterNodes := n.FilterByFunc(IsMasterWithNoSlot)
 	return filterNodes[0].ID
 }
 
+// AllNodes anonymous function for fetch all Nodes
 var AllNodes = func(n *Node) bool {
 	return true
 }
 
+// IsMaster anonymous function for searching Master Node
 var IsMaster = func(n *Node) bool {
 	return n.Role == RedisMasterRole
 }
 
+// IsSlave anonymous function for searching Slave Node
 var IsSlave = func(n *Node) bool {
 	return n.Role == RedisSlaveRole
 }

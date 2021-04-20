@@ -20,9 +20,10 @@ import (
 	"context"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,7 +41,7 @@ type RedisReconciler struct {
 }
 
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=pods/exec,verbs=create
 // +kubebuilder:rbac:groups=core,resources=secrets;services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=operators.cloud.tencent.com,resources=redis,verbs=get;list;watch;create;update;patch;delete
@@ -57,10 +58,10 @@ type RedisReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	klog.V(1).Infof("Reconciling Redis: %s", req.NamespacedName)
+	klog.Infof("Reconciling Redis: %s", req.NamespacedName)
 	instance := &redisv1alpha1.Redis{}
 
-	if err := r.Client.Get(context.TODO(), req.NamespacedName, instance); err != nil {
+	if err := r.Get(context.TODO(), req.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -112,7 +113,11 @@ func (r *RedisReconciler) ReconcileRedisClusterNode(instance *redisv1alpha1.Redi
 		return err
 	}
 
-	numOfRedisNodes := r.RedisClient.GetRedisClusterNodes(instance).CountByFunc(res.AllNodes)
+	redisNodes, err := r.RedisClient.GetRedisClusterNodes(instance)
+	if err != nil {
+		return err
+	}
+	numOfRedisNodes := redisNodes.CountByFunc(res.AllNodes)
 	// If number of redis nodes is 1, create redis cluster
 	// If 1 < numOfRedisNodes < size*2, add left nodes(size*2 - numOfRedisNodes) to redis cluster
 	if numOfRedisNodes == 1 {
@@ -129,22 +134,25 @@ func (r *RedisReconciler) ReconcileRedisClusterNode(instance *redisv1alpha1.Redi
 		klog.Info("Adding node to redis cluster")
 		startIndex := numOfRedisNodes / 2
 		for podCount := startIndex; podCount < int(*instance.Spec.Size); podCount++ {
+			klog.Info("Adding a new node as a master")
 			if err := r.RedisClient.ExecuteAddRedisMasterCommand(instance, podCount); err != nil {
 				return err
 			}
-			klog.Info("Waiting for master-%d node join cluster", podCount)
+			klog.Infof("Waiting for new master-%d node join cluster", podCount)
 			if err := r.WaitRedisMasterJoin(instance); err != nil {
 				return err
 			}
+			klog.Info("Resharding the cluster for the new master node")
 			if err := r.RedisClient.ExecuteSlotReshardCommand(instance, podCount); err != nil {
 				return err
 			}
+			klog.Info("Adding a new node as a slave")
 			if err := r.RedisClient.ExecuteRedisReplicationCommand(instance, podCount); err != nil {
 				return err
 			}
 		}
 	}
-	klog.Info("Redis master count is desired")
+	klog.Info("Redis cluster is ready")
 	return nil
 }
 
@@ -164,21 +172,24 @@ func (r *RedisReconciler) ReconcileRedisStandalone(instance *redisv1alpha1.Redis
 // Waiting for redis cluster node ready
 func (r *RedisReconciler) WaitRedisClusterNodeReady(instance *redisv1alpha1.Redis) error {
 	if err := wait.PollImmediate(time.Second*30, time.Minute*5, func() (bool, error) {
-		redisMasterInfo, err := r.RedisClient.AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.ObjectMeta.Name+"-master", metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Cound not fetch redis master statefulset: %v", err)
-			return false, err
+		redisMasterSts := &appsv1.StatefulSet{}
+		redisMasterStsKey := types.NamespacedName{Name: instance.ObjectMeta.Name + "-master", Namespace: instance.Namespace}
+		if err := r.Get(context.Background(), redisMasterStsKey, redisMasterSts); err != nil {
+			klog.Errorf("Could not fetch redis master statefulset: %v", err)
+			return false, client.IgnoreNotFound(err)
 		}
-		redisSlaveInfo, err := r.RedisClient.AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.ObjectMeta.Name+"-slave", metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Cound not fetch redis slave statefulset: %v", err)
-			return false, err
+		redisSlaveSts := &appsv1.StatefulSet{}
+		redisSlaveStsKey := types.NamespacedName{Name: instance.ObjectMeta.Name + "-slave", Namespace: instance.Namespace}
+		if err := r.Get(context.Background(), redisSlaveStsKey, redisSlaveSts); err != nil {
+			klog.Errorf("Could not fetch redis slave statefulset: %v", err)
+			return false, client.IgnoreNotFound(err)
 		}
-		if int(redisMasterInfo.Status.ReadyReplicas) != int(*instance.Spec.Size) && int(redisSlaveInfo.Status.ReadyReplicas) != int(*instance.Spec.Size) {
-			klog.Infof("Redis master and slave nodes are not ready yet, Master.Ready.Replicas: %d, Slave.Ready.Replicas: %d", redisMasterInfo.Status.ReadyReplicas, redisSlaveInfo.Status.ReadyReplicas)
+
+		if int(redisMasterSts.Status.ReadyReplicas) != int(*instance.Spec.Size) && int(redisSlaveSts.Status.ReadyReplicas) != int(*instance.Spec.Size) {
+			klog.Infof("Redis master and slave nodes are not ready yet, Master.Ready.Replicas: %d, Slave.Ready.Replicas: %d", redisMasterSts.Status.ReadyReplicas, redisSlaveSts.Status.ReadyReplicas)
 			return false, nil
 		}
-		klog.Infof("Redis master and slave nodes are ready, Master.Ready.Replicas: %d, Slave.Ready.Replicas: %d", redisMasterInfo.Status.ReadyReplicas, redisSlaveInfo.Status.ReadyReplicas)
+		klog.Infof("Redis master and slave nodes are ready, Master.Ready.Replicas: %d, Slave.Ready.Replicas: %d", redisMasterSts.Status.ReadyReplicas, redisSlaveSts.Status.ReadyReplicas)
 		return true, nil
 	}); err != nil {
 		return err
@@ -189,12 +200,16 @@ func (r *RedisReconciler) WaitRedisClusterNodeReady(instance *redisv1alpha1.Redi
 // Waiting for redis cluster node ready
 func (r *RedisReconciler) WaitRedisMasterJoin(instance *redisv1alpha1.Redis) error {
 	if err := wait.PollImmediate(time.Second*10, time.Minute*2, func() (bool, error) {
-		filterNodes := r.RedisClient.GetRedisClusterNodes(instance).FilterByFunc(res.IsMasterWithNoSlot)
+		allNodes, err := r.RedisClient.GetRedisClusterNodes(instance)
+		if err != nil {
+			return false, err
+		}
+		filterNodes := allNodes.FilterByFunc(res.IsMasterWithNoSlot)
 		if len(filterNodes) == 0 {
-			klog.Info("Waiting master node join cluster ...")
+			klog.Info("Still waiting for the master node to join ...")
 			return false, nil
 		}
-		klog.Info("Master node joined cluster")
+		klog.Info("The master node has joined the cluster")
 		return true, nil
 	}); err != nil {
 		return err

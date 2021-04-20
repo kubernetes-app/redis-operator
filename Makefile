@@ -76,7 +76,6 @@ tidy: ## Run go mod tidy -v
 	go mod tidy -v
 
 goimports_fmt: ## Run goimports
-	goimports -w -local github.com/kubernetes-app api/
 	goimports -w -local github.com/kubernetes-app controllers/
 	goimports -w -local github.com/kubernetes-app main.go
 
@@ -93,26 +92,20 @@ test: manifests generate fmt vet ## Run tests.
 	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.7.2/hack/setup-envtest.sh
 	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./... -coverprofile cover.out
 
-KIND ?= $(shell which kind)
-kind: ## Install kind
-ifeq (, $(KIND))
-	@{ \
-	set -e ;\
-	ZEN_TMP_DIR=$$(mktemp -d) ;\
-	cd $$ZEN_TMP_DIR ;\
-	go mod init tmp ;\
-	GO111MODULE=on go get sigs.k8s.io/kind@v0.10.0 ;\
-	rm -rf $$ZEN_TMP_DIR ;\
-	}
-KIND=$(GOBIN)/kind
-endif
-
 KIND_CLUSTER_NAME ?= "redis"
 kind-cluster: kind ## Create kind cluster
-	@${KIND} get clusters | grep $(KIND_CLUSTER_NAME)  >/dev/null 2>&1 && \
+	@$(KIND) get clusters | grep $(KIND_CLUSTER_NAME)  >/dev/null 2>&1 && \
 	echo "KIND Cluster already exists" && exit 0 || \
 	echo "Creating KIND Cluster" && \
-	${KIND} create cluster --name ${KIND_CLUSTER_NAME} --config=./common/config/kind-config.yaml
+	$(KIND) create cluster --name $(KIND_CLUSTER_NAME) --config=./common/config/kind-config.yaml
+
+kind-cluster-delete: ## Delete kind cluster
+	@echo Delete Kind cluster
+	@$(KIND) delete cluster --name $(KIND_CLUSTER_NAME)
+
+kind-load-img: ## Prepare load image to kind cluster
+	@echo Loading redis-operator images into Kind cluster
+	@$(KIND) load docker-image $(IMG) --name $(KIND_CLUSTER_NAME) -v 5
 
 ##@ Build
 
@@ -120,7 +113,7 @@ build: generate fmt vet ## Build manager binary.
 	go build -o bin/manager main.go
 
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./main.go
+	go run ./main.go -v=2
 
 docker-build: test ## Build docker image with the manager.
 	docker build -t ${IMG} .
@@ -143,7 +136,6 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/default | kubectl delete -f -
 
-
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
 	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.4.1)
@@ -151,6 +143,10 @@ controller-gen: ## Download controller-gen locally if necessary.
 KUSTOMIZE = $(shell pwd)/bin/kustomize
 kustomize: ## Download kustomize locally if necessary.
 	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v3@v3.8.7)
+
+KIND = $(shell pwd)/bin/kind
+kind: ## Download kind locally if necessary.
+	$(call go-get-tool,$(KIND),sigs.k8s.io/kind@v0.10.0)
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
