@@ -33,6 +33,7 @@ import (
 
 	redisv1alpha1 "github.com/kubernetes-app/redis-operator/api/v1alpha1"
 	"github.com/kubernetes-app/redis-operator/controllers"
+	"github.com/kubernetes-app/redis-operator/controllers/redis"
 	res "github.com/kubernetes-app/redis-operator/controllers/resources"
 	// +kubebuilder:scaffold:imports
 )
@@ -76,7 +77,8 @@ func main() {
 
 	if err = (&controllers.RedisReconciler{
 		Client:      mgr.GetClient(),
-		RedisClient: res.NewRedisClient(mgr),
+		K8sClient:   res.NewK8sClient(mgr),
+		RedisClient: redis.NewRedisClient(mgr),
 		Scheme:      mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		klog.Errorf("unable to create controller Redis: %v", err)

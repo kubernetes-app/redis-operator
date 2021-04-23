@@ -38,7 +38,7 @@ const (
 )
 
 // CreateOrUpdateMasterHeadlessService creates master headless service
-func (rc *RedisClient) CreateOrUpdateMasterHeadlessService(cr *redisv1alpha1.Redis) error {
+func (rc *K8sClient) CreateOrUpdateMasterHeadlessService(cr *redisv1alpha1.Redis) error {
 	if err := rc.CreateRedisService(cr, HeadlessService, "master"); err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func (rc *RedisClient) CreateOrUpdateMasterHeadlessService(cr *redisv1alpha1.Red
 }
 
 // CreateOrUpdateMasterService creates different services for master
-func (rc *RedisClient) CreateOrUpdateMasterService(cr *redisv1alpha1.Redis) error {
+func (rc *K8sClient) CreateOrUpdateMasterService(cr *redisv1alpha1.Redis) error {
 	if err := rc.CreateRedisService(cr, HeadService, "master"); err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func (rc *RedisClient) CreateOrUpdateMasterService(cr *redisv1alpha1.Redis) erro
 }
 
 // CreateOrUpdateSlaveHeadlessService creates slave headless service
-func (rc *RedisClient) CreateOrUpdateSlaveHeadlessService(cr *redisv1alpha1.Redis) error {
+func (rc *K8sClient) CreateOrUpdateSlaveHeadlessService(cr *redisv1alpha1.Redis) error {
 	if err := rc.CreateRedisService(cr, HeadlessService, "slave"); err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func (rc *RedisClient) CreateOrUpdateSlaveHeadlessService(cr *redisv1alpha1.Redi
 }
 
 // CreateOrUpdateSlaveService creates different services for slave
-func (rc *RedisClient) CreateOrUpdateSlaveService(cr *redisv1alpha1.Redis) error {
+func (rc *K8sClient) CreateOrUpdateSlaveService(cr *redisv1alpha1.Redis) error {
 	if err := rc.CreateRedisService(cr, HeadService, "slave"); err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (rc *RedisClient) CreateOrUpdateSlaveService(cr *redisv1alpha1.Redis) error
 }
 
 // CreateOrUpdateStandaloneHeadlessService creates redis standalone service
-func (rc *RedisClient) CreateOrUpdateStandaloneHeadlessService(cr *redisv1alpha1.Redis) error {
+func (rc *K8sClient) CreateOrUpdateStandaloneHeadlessService(cr *redisv1alpha1.Redis) error {
 	if err := rc.CreateRedisService(cr, HeadlessService, "standalone"); err != nil {
 		return err
 	}
@@ -78,14 +78,14 @@ func (rc *RedisClient) CreateOrUpdateStandaloneHeadlessService(cr *redisv1alpha1
 }
 
 // CreateOrUpdateStandaloneService creates redis standalone service
-func (rc *RedisClient) CreateOrUpdateStandaloneService(cr *redisv1alpha1.Redis) error {
+func (rc *K8sClient) CreateOrUpdateStandaloneService(cr *redisv1alpha1.Redis) error {
 	if err := rc.CreateRedisService(cr, HeadService, "standalone"); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (rc *RedisClient) CreateRedisService(cr *redisv1alpha1.Redis, serviceMode ServiceMode, role string) error {
+func (rc *K8sClient) CreateRedisService(cr *redisv1alpha1.Redis, serviceMode ServiceMode, role string) error {
 	labels := map[string]string{
 		"app":  cr.ObjectMeta.Name + "-" + role,
 		"role": role,
@@ -116,7 +116,7 @@ func (rc *RedisClient) CreateRedisService(cr *redisv1alpha1.Redis, serviceMode S
 		klog.Errorf("Create or Update redis %s service failed: %v", role, err)
 		return err
 	}
-	klog.Infof("Create or Update redis %s service successful, service %s", role, or)
+	klog.Infof("Create or Update redis %s %s service successful, service %s", serviceMode, role, or)
 	return nil
 }
 

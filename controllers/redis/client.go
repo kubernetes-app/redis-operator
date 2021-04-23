@@ -13,25 +13,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package resources
+package redis
 
 import (
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-// K8sClient is the struct for ODLM controllers
-type K8sClient struct {
+// RedisClient is the struct for ODLM controllers
+type RedisClient struct {
 	client.Client
-	// *rest.Config
+	*rest.Config
+	*kubernetes.Clientset
 }
 
-// NewK8sClient is the method to initialize an Operator struct
-func NewK8sClient(mgr manager.Manager) *K8sClient {
-	// clientset, _ := kubernetes.NewForConfig(mgr.GetConfig())
-	return &K8sClient{
-		Client: mgr.GetClient(),
-		// Config: mgr.GetConfig(),
-		// Clientset: clientset,
+// NewRedisClient is the method to initialize an Operator struct
+func NewRedisClient(mgr manager.Manager) *RedisClient {
+	clientset, _ := kubernetes.NewForConfig(mgr.GetConfig())
+	return &RedisClient{
+		Client:    mgr.GetClient(),
+		Config:    mgr.GetConfig(),
+		Clientset: clientset,
 	}
 }

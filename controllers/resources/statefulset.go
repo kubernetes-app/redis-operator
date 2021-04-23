@@ -36,7 +36,7 @@ const (
 )
 
 // CreateOrUpdateRedisMaster will create a Redis Master
-func (rc *RedisClient) CreateOrUpdateRedisMaster(cr *redisv1alpha1.Redis) error {
+func (rc *K8sClient) CreateOrUpdateRedisMaster(cr *redisv1alpha1.Redis) error {
 	if err := rc.CreateOrUpdateRedisServer(cr, "master"); err != nil {
 		return err
 	}
@@ -44,7 +44,7 @@ func (rc *RedisClient) CreateOrUpdateRedisMaster(cr *redisv1alpha1.Redis) error 
 }
 
 // CreateOrUpdateRedisSlave will create a Redis Slave
-func (rc *RedisClient) CreateOrUpdateRedisSlave(cr *redisv1alpha1.Redis) error {
+func (rc *K8sClient) CreateOrUpdateRedisSlave(cr *redisv1alpha1.Redis) error {
 	if err := rc.CreateOrUpdateRedisServer(cr, "slave"); err != nil {
 		return err
 	}
@@ -52,14 +52,14 @@ func (rc *RedisClient) CreateOrUpdateRedisSlave(cr *redisv1alpha1.Redis) error {
 }
 
 // CreateOrUpdateRedisStandalone will create a Redis Standalone server
-func (rc *RedisClient) CreateOrUpdateRedisStandalone(cr *redisv1alpha1.Redis) error {
+func (rc *K8sClient) CreateOrUpdateRedisStandalone(cr *redisv1alpha1.Redis) error {
 	if err := rc.CreateOrUpdateRedisServer(cr, "standalone"); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (rc *RedisClient) CreateOrUpdateRedisServer(cr *redisv1alpha1.Redis, role string) error {
+func (rc *K8sClient) CreateOrUpdateRedisServer(cr *redisv1alpha1.Redis, role string) error {
 	labels := map[string]string{
 		"app":  cr.ObjectMeta.Name + "-" + role,
 		"role": role,
@@ -80,7 +80,7 @@ func (rc *RedisClient) CreateOrUpdateRedisServer(cr *redisv1alpha1.Redis, role s
 	return nil
 }
 
-func (rc *RedisClient) FetchStatefulSet(cr *redisv1alpha1.Redis, role string) (*appsv1.StatefulSet, error) {
+func (rc *K8sClient) FetchStatefulSet(cr *redisv1alpha1.Redis, role string) (*appsv1.StatefulSet, error) {
 	redisSts := &appsv1.StatefulSet{}
 	redisStsKey := types.NamespacedName{Name: cr.ObjectMeta.Name + "-" + role, Namespace: cr.Namespace}
 	if err := rc.Get(context.Background(), redisStsKey, redisSts); err != nil {

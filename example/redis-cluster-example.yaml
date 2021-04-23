@@ -28,7 +28,6 @@ spec:
   standalone:
     service:
       type: ClusterIP
-  redisConfig: {}
   redisExporter:
     enabled: true
     image: quay.io/opstree/redis-exporter:1.0

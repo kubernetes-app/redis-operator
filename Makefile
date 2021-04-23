@@ -107,6 +107,13 @@ kind-load-img: ## Prepare load image to kind cluster
 	@echo Loading redis-operator images into Kind cluster
 	@$(KIND) load docker-image $(IMG) --name $(KIND_CLUSTER_NAME) -v 5
 
+quick-test:
+	- make -j2 undeploy docker-push
+	- make deploy
+	- kubectl apply -f example/redis-cluster-example.yaml
+	- sleep 20
+	- kubectl logs deploy/redis-operator-controller-manager -f
+
 ##@ Build
 
 build: generate fmt vet ## Build manager binary.

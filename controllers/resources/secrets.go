@@ -40,7 +40,7 @@ func GenerateSecretDef(cr *redisv1alpha1.Redis, secret *corev1.Secret, scheme *r
 	return nil
 }
 
-func (rc *RedisClient) CreateOrUpdateRedisSecret(cr *redisv1alpha1.Redis) error {
+func (rc *K8sClient) CreateOrUpdateRedisSecret(cr *redisv1alpha1.Redis) error {
 	labels := map[string]string{
 		"app": cr.ObjectMeta.Name,
 	}

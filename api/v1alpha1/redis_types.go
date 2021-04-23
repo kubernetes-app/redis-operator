@@ -42,7 +42,62 @@ type RedisSpec struct {
 
 // RedisStatus defines the observed state of Redis
 type RedisStatus struct {
-	Cluster RedisSpec `json:"cluster,omitempty"`
+	// The desired number of member Nodes for the redis cluster
+	// +optional
+	// +operator-sdk:csv:customresourcedefinitions:type=status,displayName="Size",xDescriptors="urn:alm:descriptor:com.tectonic.ui:podCount"
+	Size *int32 `json:"size,omitempty"`
+	// Conditions represents the current state of the Request Service.
+	// +optional
+	// +operator-sdk:csv:customresourcedefinitions:type=status,displayName="Conditions",xDescriptors="urn:alm:descriptor:io.kubernetes.conditions"
+	Conditions []Condition `json:"conditions,omitempty"`
+	// Phase is the redis cluster running phase.
+	// +operator-sdk:csv:customresourcedefinitions:type=status,displayName="Phase",xDescriptors="urn:alm:descriptor:io.kubernetes.phase"
+	// +optional
+	Phase ClusterPhase `json:"phase,omitempty"`
+}
+
+// ConditionType is the condition of a service.
+type ConditionType string
+
+// ClusterPhase is the phase of the installation.
+type ClusterPhase string
+
+// Constants are used for state.
+const (
+	ConditionCreating   ConditionType = "Creating"
+	ConditionUpdating   ConditionType = "Updating"
+	ConditionDeleting   ConditionType = "Deleting"
+	ConditionNotFound   ConditionType = "NotFound"
+	ConditionOutofScope ConditionType = "OutofScope"
+	ConditionReady      ConditionType = "Ready"
+
+	ClusterPhaseDeleting ClusterPhase = "Deleting"
+	ClusterPhaseCreating ClusterPhase = "Creating"
+	ClusterPhaseAdding   ClusterPhase = "Adding"
+	ClusterPhaseUpdating ClusterPhase = "Updating"
+	ClusterPhaseRunning  ClusterPhase = "Running"
+	ClusterPhaseFailed   ClusterPhase = "Failed"
+)
+
+// Condition represents the current state of the Request Service.
+// A condition might not show up if it is not happening.
+type Condition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The last time this condition was updated.
+	// +optional
+	LastUpdateTime string `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime string `json:"lastTransitionTime,omitempty"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
 }
 
 // Storage is the inteface to add pvc and pv support in redis
@@ -109,6 +164,16 @@ type RedisList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Redis `json:"items"`
+}
+
+// SetPhase sets the current Phase status
+func (r *Redis) SetPhase(p ClusterPhase) {
+	r.Status.Phase = p
+}
+
+// SetSize sets the current cluster size status
+func (r *Redis) SetSize(s *int32) {
+	r.Status.Size = s
 }
 
 func init() {
