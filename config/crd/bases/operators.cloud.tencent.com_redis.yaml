@@ -1271,6 +1271,56 @@ spec:
               phase:
                 description: Phase is the redis cluster running phase.
                 type: string
+              redisNodes:
+                description: The desired all redis nodes info for the redis cluster
+                items:
+                  description: Node storage redis node info
+                  properties:
+                    configEpoch:
+                      format: int64
+                      type: integer
+                    failStatus:
+                      items:
+                        type: string
+                      type: array
+                    id:
+                      type: string
+                    importingSlots:
+                      additionalProperties:
+                        type: string
+                      type: object
+                    ip:
+                      type: string
+                    linkState:
+                      type: string
+                    masterReferent:
+                      type: string
+                    migratingSlots:
+                      additionalProperties:
+                        type: string
+                      type: object
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                    pingSent:
+                      format: int64
+                      type: integer
+                    pongRecv:
+                      format: int64
+                      type: integer
+                    port:
+                      type: string
+                    role:
+                      type: string
+                    slots:
+                      items:
+                        description: Slot represent a Redis Cluster slot
+                        format: int64
+                        type: integer
+                      type: array
+                  type: object
+                type: array
               size:
                 description: The desired number of member Nodes for the redis cluster
                 format: int32

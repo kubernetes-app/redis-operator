@@ -16,25 +16,42 @@ limitations under the License.
 package redis
 
 import (
+	runtimeschema "k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+
+	"github.com/kubernetes-app/redis-operator/controllers/exec"
 )
 
-// RedisClient is the struct for ODLM controllers
-type RedisClient struct {
+// Client is the struct for redis client
+type Client struct {
 	client.Client
 	*rest.Config
 	*kubernetes.Clientset
+	Execer exec.IExec
 }
 
-// NewRedisClient is the method to initialize an Operator struct
-func NewRedisClient(mgr manager.Manager) *RedisClient {
+// NewClient is the method to initialize an Operator struct
+func NewClient(mgr manager.Manager) *Client {
 	clientset, _ := kubernetes.NewForConfig(mgr.GetConfig())
-	return &RedisClient{
+	gvk := runtimeschema.GroupVersionKind{
+		Group:   "",
+		Version: "v1",
+		Kind:    "Pod",
+	}
+	restClient, _ := apiutil.RESTClientForGVK(gvk, false, mgr.GetConfig(), serializer.NewCodecFactory(mgr.GetScheme()))
+	// if err != nil {
+	// 	return err
+	// }
+	execer := exec.NewRemoteExec(restClient, mgr.GetConfig())
+	return &Client{
 		Client:    mgr.GetClient(),
 		Config:    mgr.GetConfig(),
 		Clientset: clientset,
+		Execer:    execer,
 	}
 }

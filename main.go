@@ -78,7 +78,7 @@ func main() {
 	if err = (&controllers.RedisReconciler{
 		Client:      mgr.GetClient(),
 		K8sClient:   res.NewK8sClient(mgr),
-		RedisClient: redis.NewRedisClient(mgr),
+		RedisClient: redis.NewClient(mgr),
 		Scheme:      mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		klog.Errorf("unable to create controller Redis: %v", err)

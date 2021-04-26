@@ -23,6 +23,14 @@ import (
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+const (
+	// DefaultRedisPort define the default Redis Port
+	DefaultRedisPort string = "6379"
+	// RedisMasterRole redis role master
+	RedisMasterRole string = "master"
+	// RedisSlaveRole redis role slave
+	RedisSlaveRole string = "slave"
+)
 
 // RedisSpec defines the desired state of Redis
 type RedisSpec struct {
@@ -46,6 +54,9 @@ type RedisStatus struct {
 	// +optional
 	// +operator-sdk:csv:customresourcedefinitions:type=status,displayName="Size",xDescriptors="urn:alm:descriptor:com.tectonic.ui:podCount"
 	Size *int32 `json:"size,omitempty"`
+	// The desired all redis nodes info for the redis cluster
+	// +optional
+	RedisNodes Nodes `json:"redisNodes,omitempty"`
 	// Conditions represents the current state of the Request Service.
 	// +optional
 	// +operator-sdk:csv:customresourcedefinitions:type=status,displayName="Conditions",xDescriptors="urn:alm:descriptor:io.kubernetes.conditions"
@@ -55,6 +66,31 @@ type RedisStatus struct {
 	// +optional
 	Phase ClusterPhase `json:"phase,omitempty"`
 }
+
+// Slot represent a Redis Cluster slot
+type Slot uint64
+
+// Node storage redis node info
+type Node struct {
+	Name           string            `json:"name,omitempty"`
+	Namespace      string            `json:"namespace,omitempty"`
+	ID             string            `json:"id,omitempty"`
+	IP             string            `json:"ip,omitempty"`
+	Port           string            `json:"port,omitempty"`
+	Role           string            `json:"role,omitempty"`
+	LinkState      string            `json:"linkState,omitempty"`
+	MasterReferent string            `json:"masterReferent,omitempty"`
+	FailStatus     []string          `json:"failStatus,omitempty"`
+	PingSent       int64             `json:"pingSent,omitempty"`
+	PongRecv       int64             `json:"pongRecv,omitempty"`
+	ConfigEpoch    int64             `json:"configEpoch,omitempty"`
+	Slots          []Slot            `json:"slots,omitempty"`
+	MigratingSlots map[string]string `json:"migratingSlots,omitempty"`
+	ImportingSlots map[string]string `json:"importingSlots,omitempty"`
+}
+
+// Nodes represent a Node slice
+type Nodes []Node
 
 // ConditionType is the condition of a service.
 type ConditionType string

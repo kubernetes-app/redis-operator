@@ -26,8 +26,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1alpha1 "github.com/kubernetes-app/redis-operator/api/v1alpha1"
+	"github.com/kubernetes-app/redis-operator/controllers/redis"
 )
 
 const (
@@ -88,6 +90,44 @@ func (rc *K8sClient) FetchStatefulSet(cr *redisv1alpha1.Redis, role string) (*ap
 		return nil, err
 	}
 	return redisSts, nil
+}
+
+// FetchStatefulSetPodsByLabels implement the IStatefulSetControl.Interface.
+func (rc *K8sClient) FetchStatefulSetPodsByLabels(namespace string, labels map[string]string) (*corev1.PodList, error) {
+	foundPods := &corev1.PodList{}
+	err := rc.List(context.TODO(), foundPods, client.InNamespace(namespace), client.MatchingLabels(labels))
+
+	return foundPods, err
+}
+
+func (rc *K8sClient) GetRedisClusterNodes(cr *redisv1alpha1.Redis) (*redisv1alpha1.Nodes, error) {
+	klog.Info("Geting redis cluster nodes info from pods")
+	masterPods, err := rc.FetchStatefulSetPodsByLabels(cr.Namespace, map[string]string{
+		"app": cr.ObjectMeta.Name + "-" + redis.RedisMasterRole,
+	})
+	if err != nil {
+		klog.Errorf("Fetch master pods failed: %v", err)
+		return nil, err
+	}
+	slavePods, err := rc.FetchStatefulSetPodsByLabels(cr.Namespace, map[string]string{
+		"app": cr.ObjectMeta.Name + "-" + redis.RedisSlaveRole,
+	})
+	if err != nil {
+		klog.Errorf("Fetch slave pods failed: %v", err)
+		return nil, err
+	}
+	allPods := append(masterPods.Items, slavePods.Items...)
+	nodes := &redisv1alpha1.Nodes{}
+	for _, po := range allPods {
+		node := redisv1alpha1.Node{}
+		node.Name = po.Name
+		node.Namespace = po.Namespace
+		node.Role = po.Labels["role"]
+		node.IP = po.Status.PodIP
+		node.Port = redisv1alpha1.DefaultRedisPort
+		*nodes = append(*nodes, node)
+	}
+	return nodes, nil
 }
 
 // GenerateStateFulSetsDef generates the statefulsets definition
