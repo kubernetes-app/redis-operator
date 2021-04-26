@@ -18,7 +18,6 @@ package redis
 import (
 	runtimeschema "k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
@@ -31,27 +30,21 @@ import (
 type Client struct {
 	client.Client
 	*rest.Config
-	*kubernetes.Clientset
 	Execer exec.IExec
 }
 
 // NewClient is the method to initialize an Operator struct
 func NewClient(mgr manager.Manager) *Client {
-	clientset, _ := kubernetes.NewForConfig(mgr.GetConfig())
 	gvk := runtimeschema.GroupVersionKind{
 		Group:   "",
 		Version: "v1",
 		Kind:    "Pod",
 	}
 	restClient, _ := apiutil.RESTClientForGVK(gvk, false, mgr.GetConfig(), serializer.NewCodecFactory(mgr.GetScheme()))
-	// if err != nil {
-	// 	return err
-	// }
 	execer := exec.NewRemoteExec(restClient, mgr.GetConfig())
 	return &Client{
-		Client:    mgr.GetClient(),
-		Config:    mgr.GetConfig(),
-		Clientset: clientset,
-		Execer:    execer,
+		Client: mgr.GetClient(),
+		Config: mgr.GetConfig(),
+		Execer: execer,
 	}
 }

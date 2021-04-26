@@ -23,15 +23,11 @@ import (
 // K8sClient is the struct for ODLM controllers
 type K8sClient struct {
 	client.Client
-	// *rest.Config
 }
 
 // NewK8sClient is the method to initialize an Operator struct
 func NewK8sClient(mgr manager.Manager) *K8sClient {
-	// clientset, _ := kubernetes.NewForConfig(mgr.GetConfig())
 	return &K8sClient{
 		Client: mgr.GetClient(),
-		// Config: mgr.GetConfig(),
-		// Clientset: clientset,
 	}
 }

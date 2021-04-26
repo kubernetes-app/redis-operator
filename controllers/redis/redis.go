@@ -130,10 +130,6 @@ func (r *Client) ReshardCommand(cr *redisv1alpha1.Redis, nodeName, clusterFromNo
 		"--cluster",
 		"reshard",
 	}
-	// masterIp, err := r.GetRedisServerIP(cr, RedisMasterRole, nodeNum)
-	// if err != nil {
-	// 	return nil, err
-	// }
 	cmd = append(cmd, cr.Status.RedisNodes.GetIPPortByName(nodeName))
 	cmd = append(cmd, "--cluster-from")
 	cmd = append(cmd, clusterFromNodeIds)
@@ -158,14 +154,6 @@ func (r *Client) AddNodeCommand(cr *redisv1alpha1.Redis, role, newNodeName, exis
 		"--cluster",
 		"add-node",
 	}
-	// newIp, err := r.GetRedisServerIP(cr, newRole, newNodeIpPort)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// existingIp, err := r.GetRedisServerIP(cr, existingRole, existingNodeIpPort)
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	newNode := cr.Status.RedisNodes.GetNodeByName(newNodeName)
 	existingNode := cr.Status.RedisNodes.GetNodeByName(existingNodeName)
@@ -189,17 +177,6 @@ func (r *Client) DeleteNodeCommand(cr *redisv1alpha1.Redis, nodeName string) ([]
 		"--cluster",
 		"del-node",
 	}
-
-	// nodeIp, err := r.GetRedisServerIP(cr, role, nodeNum)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// nodes, err := r.GetRedisClusterNodes(cr)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// nodeId := nodes.GetNodeByIpPort(nodeIpPort).ID
-
 	node := cr.Status.RedisNodes.GetNodeByName(nodeName)
 
 	cmd = append(cmd, node.IPPort())
@@ -215,56 +192,12 @@ func (r *Client) DeleteNodeCommand(cr *redisv1alpha1.Redis, nodeName string) ([]
 
 // ExecuteCommand will execute the commands in pod
 func (r *Client) ExecuteCommand(cr *redisv1alpha1.Redis, cmd []string) error {
-	// var (
-	// 	execOut bytes.Buffer
-	// 	execErr bytes.Buffer
-	// )
 	pod := &corev1.Pod{}
 	podKey := types.NamespacedName{Name: cr.ObjectMeta.Name + "-master-0", Namespace: cr.Namespace}
 	if err := r.Get(context.Background(), podKey, pod); err != nil {
 		klog.Errorf("Could not get pod info: %v", err)
 		return err
 	}
-
-	// targetContainerIndex := -1
-	// for i, tr := range pod.Spec.Containers {
-	// 	if tr.Name == cr.ObjectMeta.Name+"-master" {
-	// 		klog.V(1).Infof("Pod Counted successfully, Count: %d, Container Name: %s", i, tr.Name)
-	// 		targetContainerIndex = i
-	// 		break
-	// 	}
-	// }
-
-	// if targetContainerIndex < 0 {
-	// 	klog.Error("Could not find pod container to execute")
-	// 	return fmt.Errorf("Could not find pod container to execute")
-	// }
-
-	// req := r.Clientset.CoreV1().RESTClient().Post().
-	// 	Resource("pods").
-	// 	Name(cr.ObjectMeta.Name + "-master-0").
-	// 	Namespace(cr.Namespace).
-	// 	SubResource("exec")
-	// req.VersionedParams(&corev1.PodExecOptions{
-	// 	Container: pod.Spec.Containers[targetContainerIndex].Name,
-	// 	Command:   cmd,
-	// 	Stdout:    true,
-	// 	Stderr:    true,
-	// }, scheme.ParameterCodec)
-	// exec, err := remotecommand.NewSPDYExecutor(r.Config, "POST", req.URL())
-	// if err != nil {
-	// 	klog.Errorf("Failed to init executor: %v", err)
-	// 	return err
-	// }
-
-	// if err = exec.Stream(remotecommand.StreamOptions{
-	// 	Stdout: &execOut,
-	// 	Stderr: &execErr,
-	// 	Tty:    false,
-	// }); err != nil {
-	// 	klog.Errorf("Failed to execute command, Command: %s, \nerr: \n%v, \nStdout: \n%s, \nStderr: \n%s", cmd, err, execOut.String(), execErr.String())
-	// 	return err
-	// }
 	if err := r.Execer.ExecCommandInPod(pod, cmd...); err != nil {
 		return err
 	}
@@ -315,7 +248,6 @@ func ParseNodeInfos(input *string) *redisv1alpha1.Nodes {
 		} else {
 			node := &redisv1alpha1.Node{
 				Port:           DefaultRedisPort,
-				Slots:          []redisv1alpha1.Slot{},
 				MigratingSlots: map[string]string{},
 				ImportingSlots: map[string]string{},
 			}
@@ -332,20 +264,20 @@ func ParseNodeInfos(input *string) *redisv1alpha1.Nodes {
 			node.SetRole(values[2])
 			node.SetFailureStatus(values[2])
 			node.SetReferentMaster(values[3])
-			if i, err := strconv.ParseInt(values[4], 10, 64); err == nil {
+			if i, err := strconv.Atoi(values[4]); err == nil {
 				node.PingSent = i
 			}
-			if i, err := strconv.ParseInt(values[5], 10, 64); err == nil {
+			if i, err := strconv.Atoi(values[5]); err == nil {
 				node.PongRecv = i
 			}
-			if i, err := strconv.ParseInt(values[6], 10, 64); err == nil {
+			if i, err := strconv.Atoi(values[6]); err == nil {
 				node.ConfigEpoch = i
 			}
 			node.SetLinkStatus(values[7])
-
+			node.Slots = strings.Join(values[8:], " ")
 			for _, slot := range values[8:] {
 				if s, importing, migrating, err := redisv1alpha1.DecodeSlotRange(slot); err == nil {
-					node.Slots = append(node.Slots, s...)
+					node.SlotsNum += len(s)
 					if importing != nil {
 						node.ImportingSlots[importing.SlotID.String()] = importing.FromNodeID
 					}

@@ -1277,7 +1277,6 @@ spec:
                   description: Node storage redis node info
                   properties:
                     configEpoch:
-                      format: int64
                       type: integer
                     failStatus:
                       items:
@@ -1304,21 +1303,17 @@ spec:
                     namespace:
                       type: string
                     pingSent:
-                      format: int64
                       type: integer
                     pongRecv:
-                      format: int64
                       type: integer
                     port:
                       type: string
                     role:
                       type: string
+                    slotNum:
+                      type: integer
                     slots:
-                      items:
-                        description: Slot represent a Redis Cluster slot
-                        format: int64
-                        type: integer
-                      type: array
+                      type: string
                   type: object
                 type: array
               size:

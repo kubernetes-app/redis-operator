@@ -30,6 +30,8 @@ const (
 	RedisMasterRole string = "master"
 	// RedisSlaveRole redis role slave
 	RedisSlaveRole string = "slave"
+	// RedisStandaloneRole redis role standalone
+	RedisStandaloneRole string = "standalone"
 )
 
 // RedisSpec defines the desired state of Redis
@@ -81,10 +83,11 @@ type Node struct {
 	LinkState      string            `json:"linkState,omitempty"`
 	MasterReferent string            `json:"masterReferent,omitempty"`
 	FailStatus     []string          `json:"failStatus,omitempty"`
-	PingSent       int64             `json:"pingSent,omitempty"`
-	PongRecv       int64             `json:"pongRecv,omitempty"`
-	ConfigEpoch    int64             `json:"configEpoch,omitempty"`
-	Slots          []Slot            `json:"slots,omitempty"`
+	PingSent       int               `json:"pingSent,omitempty"`
+	PongRecv       int               `json:"pongRecv,omitempty"`
+	ConfigEpoch    int               `json:"configEpoch,omitempty"`
+	Slots          string            `json:"slots,omitempty"`
+	SlotsNum       int               `json:"slotNum,omitempty"`
 	MigratingSlots map[string]string `json:"migratingSlots,omitempty"`
 	ImportingSlots map[string]string `json:"importingSlots,omitempty"`
 }

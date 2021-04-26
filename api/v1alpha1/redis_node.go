@@ -17,10 +17,7 @@ package v1alpha1
 
 import (
 	"net"
-	"strconv"
 	"strings"
-
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -232,6 +229,11 @@ func (n *Nodes) GetNodeWithNoName(name string) *Nodes {
 	return &newSlice
 }
 
+// CountNodes gives the number elements of NodeSlice
+func (n Nodes) CountNodes() int {
+	return len(n)
+}
+
 func (n *Nodes) GetIPPortByName(name string) string {
 	for _, node := range *n {
 		if node.Name == name {
@@ -240,6 +242,7 @@ func (n *Nodes) GetIPPortByName(name string) string {
 	}
 	return ""
 }
+
 func (n *Nodes) GetIPPortsByRole(role string) []string {
 	ipPorts := []string{}
 	for _, node := range *n {
@@ -248,65 +251,4 @@ func (n *Nodes) GetIPPortsByRole(role string) []string {
 		}
 	}
 	return ipPorts
-}
-
-func (n *Nodes) DecodeNodeInfos(input *string) Nodes {
-	nodes := Nodes{}
-	lines := strings.Split(*input, "\n")
-	for _, line := range lines {
-		values := strings.Split(line, " ")
-		if len(values) < 8 {
-			// last line is always empty
-			klog.V(2).Infof("Not enough values in line split, ignoring line: %s", line)
-			continue
-		} else {
-			node := &Node{
-				Port:           DefaultRedisPort,
-				Slots:          []Slot{},
-				MigratingSlots: map[string]string{},
-				ImportingSlots: map[string]string{},
-			}
-
-			node.ID = values[0]
-			//remove trailing port for cluster internal protocol
-			ipPort := strings.Split(values[1], "@")
-			if ip, port, err := net.SplitHostPort(ipPort[0]); err == nil {
-				node.IP = ip
-				node.Port = port
-			} else {
-				klog.Errorf("Error while decoding node info for node %s, cannot split ip:port (%s): %v", node.ID, values[1], err)
-			}
-			node.SetRole(values[2])
-			node.SetFailureStatus(values[2])
-			node.SetReferentMaster(values[3])
-			if i, err := strconv.ParseInt(values[4], 10, 64); err == nil {
-				node.PingSent = i
-			}
-			if i, err := strconv.ParseInt(values[5], 10, 64); err == nil {
-				node.PongRecv = i
-			}
-			if i, err := strconv.ParseInt(values[6], 10, 64); err == nil {
-				node.ConfigEpoch = i
-			}
-			node.SetLinkStatus(values[7])
-
-			for _, slot := range values[8:] {
-				if s, importing, migrating, err := DecodeSlotRange(slot); err == nil {
-					node.Slots = append(node.Slots, s...)
-					if importing != nil {
-						node.ImportingSlots[importing.SlotID.String()] = importing.FromNodeID
-					}
-					if migrating != nil {
-						node.MigratingSlots[migrating.SlotID.String()] = migrating.ToNodeID
-					}
-				}
-			}
-			// Set node name and namespace
-			existingNode := n.GetNodeWithIPPort(node.IP, node.Port)
-			node.Name = existingNode.Name
-			node.Namespace = existingNode.Namespace
-			nodes = append(nodes, *node)
-		}
-	}
-	return nodes
 }

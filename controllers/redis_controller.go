@@ -28,7 +28,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	redisv1alpha1 "github.com/kubernetes-app/redis-operator/api/v1alpha1"
 	"github.com/kubernetes-app/redis-operator/controllers/redis"
@@ -84,11 +87,6 @@ func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ct
 			klog.Error("Update status failed.")
 		}
 	}()
-	// if instance.Status.Size != nil {
-	// 	if err := r.UpdateRedisNodesStatus(instance); err != nil {
-	// 		return ctrl.Result{}, err
-	// 	}
-	// }
 	if instance.Spec.GlobalConfig.Password != nil {
 		if err := r.K8sClient.CreateOrUpdateRedisSecret(instance); err != nil {
 			return ctrl.Result{}, err
@@ -104,9 +102,7 @@ func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ct
 			if err := r.CreateOrUpdateResisService(instance); err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := r.WaitRedisNodesReady(instance); err != nil {
-				return ctrl.Result{}, err
-			}
+			instance.SetSize(instance.Spec.Size)
 			if err := r.CreateResisCluster(instance); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -116,9 +112,7 @@ func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ct
 			if err := r.CreateOrUpdateResisStatefulSet(instance); err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := r.WaitRedisNodesReady(instance); err != nil {
-				return ctrl.Result{}, err
-			}
+			instance.SetSize(instance.Spec.Size)
 			if err := r.AddRedisNodes(instance); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -131,9 +125,7 @@ func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ct
 			if err := r.CreateOrUpdateResisStatefulSet(instance); err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := r.WaitRedisNodesReady(instance); err != nil {
-				return ctrl.Result{}, err
-			}
+			instance.SetSize(instance.Spec.Size)
 		}
 	} else if instance.Spec.Mode == "standalone" {
 		instance.SetPhase(redisv1alpha1.ClusterPhaseCreating)
@@ -142,16 +134,18 @@ func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ct
 		}
 	}
 	instance.SetPhase(redisv1alpha1.ClusterPhaseRunning)
-	instance.SetSize(instance.Spec.Size)
 	klog.Infof("Finished reconciling Redis: %s", req.NamespacedName)
 	return ctrl.Result{}, nil
 }
 
 func (r *RedisReconciler) CreateOrUpdateResisStatefulSet(instance *redisv1alpha1.Redis) error {
-	if err := r.K8sClient.CreateOrUpdateRedisMaster(instance); err != nil {
+	if err := r.K8sClient.CreateOrUpdateRedisServer(instance, redisv1alpha1.RedisMasterRole); err != nil {
 		return err
 	}
-	if err := r.K8sClient.CreateOrUpdateRedisSlave(instance); err != nil {
+	if err := r.K8sClient.CreateOrUpdateRedisServer(instance, redisv1alpha1.RedisSlaveRole); err != nil {
+		return err
+	}
+	if err := r.WaitRedisNodesReady(instance); err != nil {
 		return err
 	}
 	return nil
@@ -196,32 +190,33 @@ func (r *RedisReconciler) AddRedisNodes(instance *redisv1alpha1.Redis) error {
 	for podCount := int(*instance.Status.Size); podCount < int(*instance.Spec.Size); podCount++ {
 		masterNodeName := instance.ObjectMeta.Name + "-" + redisv1alpha1.RedisMasterRole + "-" + strconv.Itoa(podCount)
 		slaveNodeName := instance.ObjectMeta.Name + "-" + redisv1alpha1.RedisSlaveRole + "-" + strconv.Itoa(podCount)
-		klog.Info("Adding a new node as a master")
-		if err := r.RedisClient.ExecuteAddRedisMasterCommand(instance, masterNodeName); err != nil {
-			return err
+		if instance.Status.RedisNodes.GetNodeByName(masterNodeName).ID == "" {
+			klog.Info("Adding a new node as a master")
+			if err := r.RedisClient.ExecuteAddRedisMasterCommand(instance, masterNodeName); err != nil {
+				return err
+			}
+			klog.Infof("Waiting for new node %s join cluster", masterNodeName)
+			if err := r.WaitRedisNodeJoinCluster(instance, masterNodeName); err != nil {
+				return err
+			}
 		}
-		klog.Infof("Waiting for new master-%d node join cluster", podCount)
-		if err := r.WaitRedisMasterJoin(instance); err != nil {
-			return err
-		}
+
 		klog.Info("Resharding the cluster for the new master node")
-		// nodes, err := r.RedisClient.GetRedisClusterNodes(instance)
-		// if err != nil {
-		// 	return err
-		// }
-		// masterIp, err := r.RedisClient.GetRedisServerIP(instance, redis.RedisMasterRole, strconv.Itoa(podCount))
-		// if err != nil {
-		// 	return err
-		// }
-		klog.Infof("Output instance status: %v", instance.Status)
 		fromNodeIds := instance.Status.RedisNodes.GetMasterNodesWithSlot().GetNodeIds()
 		toNodeID := instance.Status.RedisNodes.GetNodeByName(masterNodeName).ID
 		if err := r.RedisClient.ExecuteReshardCommand(instance, masterNodeName, strings.Join(fromNodeIds, ","), toNodeID, "1024"); err != nil {
 			return err
 		}
-		klog.Info("Adding a new node as a slave")
-		if err := r.RedisClient.ExecuteAddRedisSlaveCommand(instance, slaveNodeName, masterNodeName); err != nil {
-			return err
+
+		if instance.Status.RedisNodes.GetNodeByName(slaveNodeName).ID == "" {
+			klog.Info("Adding a new node as a slave")
+			if err := r.RedisClient.ExecuteAddRedisSlaveCommand(instance, slaveNodeName, masterNodeName); err != nil {
+				return err
+			}
+			klog.Infof("Waiting for new node %s join cluster", slaveNodeName)
+			if err := r.WaitRedisNodeJoinCluster(instance, slaveNodeName); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -235,32 +230,24 @@ func (r *RedisReconciler) DeleteRedisNodes(instance *redisv1alpha1.Redis) error 
 		if err := r.RedisClient.ExecuteDeleteRedisNodeCommand(instance, slaveNodeName); err != nil {
 			return err
 		}
-		klog.Info("Magerating master node slot to another nodes")
-		// nodes, err := r.RedisClient.GetRedisClusterNodes(instance)
-		// if err != nil {
-		// 	return err
-		// }
-		// masterIp, err := r.RedisClient.GetRedisServerIP(instance, redis.RedisMasterRole, strconv.Itoa(podCount))
-		// if err != nil {
-		// 	return err
-		// }
-		// fromNode := nodes.GetNodeByIpPort(instance.GetIPPortByName(masterNodeName))
-		// toNodes := nodes.FilterByFunc(redis.IsMasterWithSlot).GetNodeWithNoIpPort(instance.GetIPPortByName(masterNodeName))
 
+		klog.Info("Magerating master node slot to another nodes")
 		fromNode := instance.Status.RedisNodes.GetNodeByName(masterNodeName)
-		toNodes := instance.Status.RedisNodes.GetNodeWithNoName(masterNodeName)
-		slotsLen := len(fromNode.Slots)
-		slots, remainSlots := slotsLen/len(*toNodes), slotsLen%len(*toNodes)
-		klog.Infof("fromNode.Slots: %s, slotsLen: %d, slots: %d, remainSlots: %d, len(toNodes): %d", fromNode.Slots, slotsLen, slots, remainSlots, len(*toNodes))
+		toNodes := instance.Status.RedisNodes.GetMasterNodes().GetNodeWithNoName(masterNodeName)
+		slots, remainSlots := fromNode.SlotsNum/toNodes.CountNodes(), fromNode.SlotsNum%toNodes.CountNodes()
+		klog.V(1).Infof("fromNode.SlotsNum: %d, toNodesNum: %d, slots: %d, remainSlots: %d", fromNode.SlotsNum, toNodes.CountNodes(), slots, remainSlots)
 		for i, toNode := range *toNodes {
 			if i == (len(*toNodes) - 1) {
 				slots = slots + remainSlots
 			}
-			if err := r.RedisClient.ExecuteReshardCommand(instance, masterNodeName, fromNode.ID, toNode.ID, strconv.Itoa(slots)); err != nil {
+			if err := r.RedisClient.ExecuteReshardCommand(instance, masterNodeName, fromNode.ID, toNode.ID, strconv.Itoa(int(slots))); err != nil {
 				return err
 			}
 		}
-
+		klog.Info("Waiting for master node data migrate complete")
+		if err := r.WaitRedisNodeSlotEmpty(instance, masterNodeName); err != nil {
+			return err
+		}
 		klog.Info("Deleting master node")
 		if err := r.RedisClient.ExecuteDeleteRedisNodeCommand(instance, masterNodeName); err != nil {
 			return err
@@ -270,7 +257,7 @@ func (r *RedisReconciler) DeleteRedisNodes(instance *redisv1alpha1.Redis) error 
 }
 
 func (r *RedisReconciler) ReconcileRedisStandalone(instance *redisv1alpha1.Redis) error {
-	if err := r.K8sClient.CreateOrUpdateRedisStandalone(instance); err != nil {
+	if err := r.K8sClient.CreateOrUpdateRedisServer(instance, redisv1alpha1.RedisStandaloneRole); err != nil {
 		return err
 	}
 	if err := r.K8sClient.CreateOrUpdateStandaloneService(instance); err != nil {
@@ -286,13 +273,13 @@ func (r *RedisReconciler) ReconcileRedisStandalone(instance *redisv1alpha1.Redis
 func (r *RedisReconciler) WaitRedisNodesReady(instance *redisv1alpha1.Redis) error {
 	klog.Info("Waiting for redis nodes ready")
 	if err := wait.PollImmediate(time.Second*30, time.Minute*5, func() (bool, error) {
-		redisMasterSts, err := r.K8sClient.FetchStatefulSet(instance, "master")
+		redisMasterSts, err := r.K8sClient.FetchStatefulSet(instance, redisv1alpha1.RedisMasterRole)
 		if err != nil {
 			klog.Errorf("Could not fetch redis master statefulset: %v", err)
 			return false, client.IgnoreNotFound(err)
 		}
 
-		redisSlaveSts, err := r.K8sClient.FetchStatefulSet(instance, "slave")
+		redisSlaveSts, err := r.K8sClient.FetchStatefulSet(instance, redisv1alpha1.RedisSlaveRole)
 		if err != nil {
 			klog.Errorf("Could not fetch redis slave statefulset: %v", err)
 			return false, client.IgnoreNotFound(err)
@@ -315,16 +302,34 @@ func (r *RedisReconciler) WaitRedisNodesReady(instance *redisv1alpha1.Redis) err
 }
 
 // Waiting for redis cluster node ready
-func (r *RedisReconciler) WaitRedisMasterJoin(instance *redisv1alpha1.Redis) error {
+func (r *RedisReconciler) WaitRedisNodeJoinCluster(instance *redisv1alpha1.Redis, nodeName string) error {
 	if err := wait.PollImmediate(time.Second*10, time.Minute*2, func() (bool, error) {
 		if err := r.UpdateRedisNodesStatus(instance); err != nil {
 			return false, err
 		}
-		if len(*instance.Status.RedisNodes.GetMasterNodesWithNoSlot()) == 0 {
-			klog.Info("Still waiting for the master node to join ...")
+		if instance.Status.RedisNodes.GetNodeByName(nodeName).ID == "" {
+			klog.Infof("Still waiting for the node %s to join cluster...", nodeName)
 			return false, nil
 		}
-		klog.Info("The master node has joined the cluster")
+		klog.Infof("The node %s has joined the cluster", nodeName)
+		return true, nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Waiting node slots migrate complete
+func (r *RedisReconciler) WaitRedisNodeSlotEmpty(instance *redisv1alpha1.Redis, nodeName string) error {
+	if err := wait.PollImmediate(time.Second*10, time.Minute*2, func() (bool, error) {
+		if err := r.UpdateRedisNodesStatus(instance); err != nil {
+			return false, err
+		}
+		if instance.Status.RedisNodes.GetNodeByName(nodeName).Slots != "" {
+			klog.Infof("Still waiting for the node data migrating...", nodeName)
+			return false, nil
+		}
+		klog.Infof("The data of node %s is empty", nodeName)
 		return true, nil
 	}); err != nil {
 		return err
@@ -361,6 +366,7 @@ func (r *RedisReconciler) UpdateRedisNodesStatus(cr *redisv1alpha1.Redis) error 
 			node.PingSent = nfa.PingSent
 			node.PongRecv = nfa.PongRecv
 			node.Slots = nfa.Slots
+			node.SlotsNum = nfa.SlotsNum
 			node.ImportingSlots = nfa.ImportingSlots
 			node.MigratingSlots = nfa.MigratingSlots
 		}
@@ -373,6 +379,16 @@ func (r *RedisReconciler) UpdateRedisNodesStatus(cr *redisv1alpha1.Redis) error 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RedisReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&redisv1alpha1.Redis{}).
+		For(&redisv1alpha1.Redis{}, builder.WithPredicates(predicate.Funcs{
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				oldObject := e.ObjectOld.(*redisv1alpha1.Redis)
+				newObject := e.ObjectNew.(*redisv1alpha1.Redis)
+				return !reflect.DeepEqual(oldObject.Spec, newObject.Spec)
+			},
+			DeleteFunc: func(e event.DeleteEvent) bool {
+				// Evaluates to false if the object has been confirmed deleted.
+				return !e.DeleteStateUnknown
+			},
+		})).
 		Complete(r)
 }

@@ -37,29 +37,13 @@ const (
 	graceTime             = 15
 )
 
-// CreateOrUpdateRedisMaster will create a Redis Master
-func (rc *K8sClient) CreateOrUpdateRedisMaster(cr *redisv1alpha1.Redis) error {
-	if err := rc.CreateOrUpdateRedisServer(cr, "master"); err != nil {
-		return err
-	}
-	return nil
-}
-
-// CreateOrUpdateRedisSlave will create a Redis Slave
-func (rc *K8sClient) CreateOrUpdateRedisSlave(cr *redisv1alpha1.Redis) error {
-	if err := rc.CreateOrUpdateRedisServer(cr, "slave"); err != nil {
-		return err
-	}
-	return nil
-}
-
-// CreateOrUpdateRedisStandalone will create a Redis Standalone server
-func (rc *K8sClient) CreateOrUpdateRedisStandalone(cr *redisv1alpha1.Redis) error {
-	if err := rc.CreateOrUpdateRedisServer(cr, "standalone"); err != nil {
-		return err
-	}
-	return nil
-}
+// // CreateOrUpdateRedisStandalone will create a Redis Standalone server
+// func (rc *K8sClient) CreateOrUpdateRedisStandalone(cr *redisv1alpha1.Redis) error {
+// 	if err := rc.CreateOrUpdateRedisServer(cr, "standalone"); err != nil {
+// 		return err
+// 	}
+// 	return nil
+// }
 
 func (rc *K8sClient) CreateOrUpdateRedisServer(cr *redisv1alpha1.Redis, role string) error {
 	labels := map[string]string{
