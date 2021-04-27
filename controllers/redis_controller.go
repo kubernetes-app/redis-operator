@@ -203,7 +203,6 @@ func (r *RedisReconciler) AddRedisNodes(instance *redisv1alpha1.Redis) error {
 			if err := r.RedisClient.ExecuteAddRedisMasterCommand(instance, masterNodeName); err != nil {
 				return err
 			}
-			klog.Infof("Waiting for new node %s join cluster", masterNodeName)
 			if err := r.WaitRedisNodeJoinCluster(instance, masterNodeName); err != nil {
 				return err
 			}
@@ -221,7 +220,6 @@ func (r *RedisReconciler) AddRedisNodes(instance *redisv1alpha1.Redis) error {
 			if err := r.RedisClient.ExecuteAddRedisSlaveCommand(instance, slaveNodeName, masterNodeName); err != nil {
 				return err
 			}
-			klog.Infof("Waiting for new node %s join cluster", slaveNodeName)
 			if err := r.WaitRedisNodeJoinCluster(instance, slaveNodeName); err != nil {
 				return err
 			}
@@ -258,7 +256,6 @@ func (r *RedisReconciler) DeleteRedisNodes(instance *redisv1alpha1.Redis) error 
 					return err
 				}
 			}
-			klog.Info("Waiting for master node data migrate complete")
 			if err := r.WaitRedisNodeSlotEmpty(instance, masterNodeName); err != nil {
 				return err
 			}
@@ -322,6 +319,7 @@ func (r *RedisReconciler) WaitRedisNodesReady(instance *redisv1alpha1.Redis) err
 
 // Waiting for redis cluster node ready
 func (r *RedisReconciler) WaitRedisNodeJoinCluster(instance *redisv1alpha1.Redis, nodeName string) error {
+	klog.Info("Waiting for node join to Redis cluster")
 	if err := wait.PollImmediate(time.Second*10, time.Minute*2, func() (bool, error) {
 		if err := r.UpdateRedisNodesStatus(instance); err != nil {
 			return false, err
@@ -340,6 +338,7 @@ func (r *RedisReconciler) WaitRedisNodeJoinCluster(instance *redisv1alpha1.Redis
 
 // Waiting for redis cluster node ready
 func (r *RedisReconciler) WaitRedisClusterNodeDelete(instance *redisv1alpha1.Redis, nodeName string) error {
+	klog.Info("Waiting for Redis cluster node deleted")
 	if err := wait.PollImmediate(time.Second*10, time.Minute*2, func() (bool, error) {
 		if err := r.UpdateRedisNodesStatus(instance); err != nil {
 			return false, err
@@ -358,6 +357,7 @@ func (r *RedisReconciler) WaitRedisClusterNodeDelete(instance *redisv1alpha1.Red
 
 // Waiting for redis cluster ready
 func (r *RedisReconciler) WaitRedisClusterReady(instance *redisv1alpha1.Redis) error {
+	klog.Info("Waiting for Redis cluster ready")
 	if err := wait.PollImmediate(time.Second*10, time.Minute*2, func() (bool, error) {
 		if err := r.UpdateRedisNodesStatus(instance); err != nil {
 			return false, err
@@ -378,6 +378,7 @@ func (r *RedisReconciler) WaitRedisClusterReady(instance *redisv1alpha1.Redis) e
 
 // Waiting node slots migrate complete
 func (r *RedisReconciler) WaitRedisNodeSlotEmpty(instance *redisv1alpha1.Redis, nodeName string) error {
+	klog.Info("Waiting for master node data migrate complete")
 	if err := wait.PollImmediate(time.Second*10, time.Minute*2, func() (bool, error) {
 		if err := r.UpdateRedisNodesStatus(instance); err != nil {
 			return false, err
@@ -395,7 +396,7 @@ func (r *RedisReconciler) WaitRedisNodeSlotEmpty(instance *redisv1alpha1.Redis, 
 }
 
 func (r *RedisReconciler) UpdateRedisNodesStatus(cr *redisv1alpha1.Redis) error {
-	klog.Info("Updating redis nodes status")
+	klog.V(1).Info("Updating redis nodes status")
 	nodesFromPod, err := r.K8sClient.GetRedisClusterNodes(cr)
 	if err != nil {
 		return err

@@ -49,7 +49,7 @@ func (r *Client) GetRedisServerIP(cr *redisv1alpha1.Redis, role, nodeNum string)
 		klog.Errorf("Could not get pod info: %v", err)
 		return "", err
 	}
-	klog.V(1).Infof("Successfully got the pod ip for redis, IP: %s", pod.Status.PodIP)
+	klog.V(2).Infof("Successfully got the pod ip for redis, IP: %s", pod.Status.PodIP)
 	return pod.Status.PodIP, nil
 }
 
@@ -67,7 +67,7 @@ func (r *Client) ExecuteRedisClusterClusterCommand(cr *redisv1alpha1.Redis) erro
 		cmd = append(cmd, "-a")
 		cmd = append(cmd, *cr.Spec.GlobalConfig.Password)
 	}
-	klog.Infof("Redis cluster creation command: %s", cmd)
+	klog.V(1).Infof("Redis cluster creation command: %s", cmd)
 	if err := r.ExecuteCommand(cr, cmd); err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (r *Client) ReshardCommand(cr *redisv1alpha1.Redis, nodeName, clusterFromNo
 		cmd = append(cmd, "-a")
 		cmd = append(cmd, *cr.Spec.GlobalConfig.Password)
 	}
-	klog.Infof("Redis reshard command: %s", cmd)
+	klog.V(1).Infof("Redis reshard command: %s", cmd)
 	return cmd, nil
 }
 
@@ -166,7 +166,7 @@ func (r *Client) AddNodeCommand(cr *redisv1alpha1.Redis, role, newNodeName, exis
 		cmd = append(cmd, "-a")
 		cmd = append(cmd, *cr.Spec.GlobalConfig.Password)
 	}
-	klog.Infof("Add redis %s node command: %s", role, cmd)
+	klog.V(1).Infof("Add redis %s node command: %s", role, cmd)
 	return cmd, nil
 }
 
@@ -186,7 +186,7 @@ func (r *Client) DeleteNodeCommand(cr *redisv1alpha1.Redis, nodeName string) ([]
 		cmd = append(cmd, "-a")
 		cmd = append(cmd, *cr.Spec.GlobalConfig.Password)
 	}
-	klog.Infof("Delete redis node command: %s", cmd)
+	klog.V(1).Infof("Delete redis node command: %s", cmd)
 	return cmd, nil
 }
 
@@ -205,7 +205,7 @@ func (r *Client) ExecuteCommand(cr *redisv1alpha1.Redis, cmd []string) error {
 }
 
 func (r *Client) GetRedisClusterNodes(cr *redisv1alpha1.Redis) (*redisv1alpha1.Nodes, error) {
-	klog.Info("Geting redis cluster nodes info with redis api")
+	klog.V(1).Info("Geting redis cluster nodes info with redis api")
 	ctx := context.Background()
 
 	masterIP, err := r.GetRedisServerIP(cr, RedisMasterRole, "0")
@@ -232,7 +232,7 @@ func (r *Client) GetRedisClusterNodes(cr *redisv1alpha1.Redis) (*redisv1alpha1.N
 	if err != nil {
 		klog.Errorf("Redis command failed with this error: %v", err)
 	}
-	klog.V(2).Infof("Redis cluster nodes: \n%s", output)
+	klog.V(1).Infof("Redis cluster nodes: \n%s", output)
 	return ParseNodeInfos(&output), nil
 }
 

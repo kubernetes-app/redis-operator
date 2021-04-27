@@ -37,14 +37,6 @@ const (
 	graceTime             = 15
 )
 
-// // CreateOrUpdateRedisStandalone will create a Redis Standalone server
-// func (rc *K8sClient) CreateOrUpdateRedisStandalone(cr *redisv1alpha1.Redis) error {
-// 	if err := rc.CreateOrUpdateRedisServer(cr, "standalone"); err != nil {
-// 		return err
-// 	}
-// 	return nil
-// }
-
 func (rc *K8sClient) CreateOrUpdateRedisServer(cr *redisv1alpha1.Redis, role string) error {
 	labels := map[string]string{
 		"app":  cr.ObjectMeta.Name + "-" + role,
@@ -85,7 +77,7 @@ func (rc *K8sClient) FetchStatefulSetPodsByLabels(namespace string, labels map[s
 }
 
 func (rc *K8sClient) GetRedisClusterNodes(cr *redisv1alpha1.Redis) (*redisv1alpha1.Nodes, error) {
-	klog.Info("Geting redis cluster nodes info from pods")
+	klog.V(1).Info("Geting redis cluster nodes info from pods")
 	masterPods, err := rc.FetchStatefulSetPodsByLabels(cr.Namespace, map[string]string{
 		"app": cr.ObjectMeta.Name + "-" + redis.RedisMasterRole,
 	})

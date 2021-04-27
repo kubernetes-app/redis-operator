@@ -62,7 +62,7 @@ func (e *remoteExec) ExecCommandInContainer(namespace, podName, containerName st
 		klog.Errorf("Failed to execute command, Command: %s \nStdout: %s \nStderr: %s \nerr: %v", cmd, stdout, stderr, err)
 		return err
 	}
-	klog.V(1).Infof("Successfully executed the command, Command: %s \nStdout: %s", cmd, stdout)
+	klog.V(2).Infof("Successfully executed the command, Command: %s \nStdout: %s", cmd, stdout)
 	return nil
 }
 
