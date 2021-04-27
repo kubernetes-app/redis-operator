@@ -112,7 +112,11 @@ quick-test:
 	- make deploy
 	- kubectl apply -f example/redis-cluster-example.yaml
 	- sleep 20
-	- kubectl logs deploy/redis-operator-controller-manager -f
+	- (kubectl logs deploy/redis-operator-controller-manager -f &)
+	- sleep 200
+	- kubectl -n redis-operator-system patch redis example-redis-cluster --type=json -p='[{"op": "replace", "path": "/spec/size", "value": 4}]'
+	- sleep 100
+	- kubectl -n redis-operator-system patch redis example-redis-cluster --type=json -p='[{"op": "replace", "path": "/spec/size", "value": 3}]'
 
 ##@ Build
 

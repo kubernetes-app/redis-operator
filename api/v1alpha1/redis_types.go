@@ -55,7 +55,11 @@ type RedisStatus struct {
 	// The desired number of member Nodes for the redis cluster
 	// +optional
 	// +operator-sdk:csv:customresourcedefinitions:type=status,displayName="Size",xDescriptors="urn:alm:descriptor:com.tectonic.ui:podCount"
-	Size *int32 `json:"size,omitempty"`
+	PodSize *int32 `json:"podSize,omitempty"`
+	// The desired number of member Nodes for the redis cluster
+	// +optional
+	// +operator-sdk:csv:customresourcedefinitions:type=status,displayName="Size",xDescriptors="urn:alm:descriptor:com.tectonic.ui:podCount"
+	ClusterSize *int32 `json:"clusterSize,omitempty"`
 	// The desired all redis nodes info for the redis cluster
 	// +optional
 	RedisNodes Nodes `json:"redisNodes,omitempty"`
@@ -210,9 +214,40 @@ func (r *Redis) SetPhase(p ClusterPhase) {
 	r.Status.Phase = p
 }
 
-// SetSize sets the current cluster size status
-func (r *Redis) SetSize(s *int32) {
-	r.Status.Size = s
+// SetPodSize sets the current pod size status
+func (r *Redis) SetPodSize(s *int32) {
+	r.Status.PodSize = s
+}
+
+// SetClusterSize sets the current cluster size status
+func (r *Redis) SetClusterSize(s *int32) {
+	r.Status.ClusterSize = s
+}
+
+func (r *Redis) GetSize() int {
+	return int(*r.Spec.Size)
+}
+
+func (r *Redis) GetPodSize() int {
+	return int(*r.Status.PodSize)
+}
+
+func (r *Redis) GetClusterSize() int {
+	return int(*r.Status.ClusterSize)
+}
+
+func (r *Redis) StatusMaxSize() int {
+	if r.GetPodSize() > r.GetClusterSize() {
+		return r.GetPodSize()
+	}
+	return r.GetClusterSize()
+}
+
+func (r *Redis) StatusMinSize() int {
+	if r.GetPodSize() < r.GetClusterSize() {
+		return r.GetPodSize()
+	}
+	return r.GetClusterSize()
 }
 
 func init() {
