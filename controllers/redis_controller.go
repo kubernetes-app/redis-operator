@@ -126,10 +126,10 @@ func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ct
 			if err := r.DeleteRedisNodes(instance); err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := r.WaitRedisClusterReady(instance); err != nil {
+			if err := r.CreateOrUpdateResisStatefulSet(instance); err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := r.CreateOrUpdateResisStatefulSet(instance); err != nil {
+			if err := r.WaitRedisClusterReady(instance); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
@@ -266,6 +266,9 @@ func (r *RedisReconciler) DeleteRedisNodes(instance *redisv1alpha1.Redis) error 
 			if err := r.RedisClient.ExecuteDeleteRedisNodeCommand(instance, masterNodeName); err != nil {
 				return err
 			}
+			if err := r.WaitRedisClusterNodeDelete(instance, slaveNodeName); err != nil {
+				return err
+			}
 		}
 	}
 	instance.SetClusterSize(instance.Spec.Size)
@@ -361,7 +364,7 @@ func (r *RedisReconciler) WaitRedisClusterReady(instance *redisv1alpha1.Redis) e
 		}
 		for _, node := range instance.Status.RedisNodes {
 			if node.ID == "" || len(node.FailStatus) != 0 {
-				klog.Info("Still waiting for the Redis cluster ready...")
+				klog.Infof("Still waiting for node %s ready in the Redis cluster...", node.Name)
 				return false, nil
 			}
 		}
